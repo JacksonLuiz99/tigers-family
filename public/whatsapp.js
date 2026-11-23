@@ -2,7 +2,7 @@ import { CLANS, DEFAULT_CLAN, findClan } from './clans.js';
 import { parseGameTime } from './stats.js';
 
 const minute=60000;
-const time=value=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Cuiaba',dateStyle:'short',timeStyle:'short'}).format(value);
+const time=value=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'}).format(value);
 export const messageName=value=>Array.from(String(value ?? '').normalize('NFC').replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069*_~`]/g,' ').replace(/\s+/g,' ').trim()).slice(0,100).join('');
 const tagPattern=/^#[0289PYLQGRJCUV]{3,14}$/;
 function recent(at,now,window){return Number.isFinite(at)&&at>0&&at<=now+minute&&now-at<=window;}
@@ -30,20 +30,16 @@ export function pendingMessage(payload,{now=Date.now(),includeTags=false}={}) {
   pending.sort((a,b)=>a.position-b.position);
   if(!pending.length)throw new Error('Missão cumprida: todos os ataques desta guerra já foram utilizados.');
   const total=pending.reduce((n,m)=>n+m.remaining,0);const remainingMinutes=Math.ceil((end-now)/minute);
-  const remaining=`${Math.floor(remainingMinutes/60)}h ${String(remainingMinutes%60).padStart(2,'0')}min`;
-  const score=[war.clan.stars,war.opponent?.stars].every(n=>Number.isInteger(n)&&n>=0)?`Placar da coleta: ${war.clan.stars} ★ × ${war.opponent.stars} ★\n`:'';
+  const remaining=`${Math.floor(remainingMinutes/60)}h${String(remainingMinutes%60).padStart(2,'0')}`;
+  const score=[war.clan.stars,war.opponent?.stars].every(n=>Number.isInteger(n)&&n>=0)?` (${war.clan.stars}★ × ${war.opponent.stars}★)`:'';
   const text=[
-    '🐯 *TIGERS OF WAR · CHAMADO PARA A GUERRA*',
-    '',`*Clã:* ${messageName(current.clan.name || known.name)} (${known.tag})`,
-    `⚔️ ${war.kind==='cwl'?'Liga de Guerra (CWL)':'Guerra de Clãs'} · ${war.teamSize} × ${war.teamSize}`,
-    `*Adversário:* ${messageName(war.opponent?.name || 'Adversário')}`,
-    score.trimEnd(),`⏳ *Término:* ${time(end)} (Cuiabá)`,`*Tempo restante ao gerar:* ${remaining}`,
-    '',`🔥 *${total} ataque${total===1?'':'s'} pendente${total===1?'':'s'} · ${pending.length} guerreiro${pending.length===1?'':'s'}*`,
-    '',...pending.map(m=>`• #${m.position} ${m.name}${includeTags?` (${m.tag})`:''} — ${m.remaining}/${limit} ataque${limit===1?'':'s'} ${limit===1?'disponível':'disponíveis'}`),
-    '', '*Organizem os alvos com a liderança e usem todos os ataques. Vamos até o fim! 🐯🔥*',
-    '',`📌 Coleta da guerra: ${time(current.warCapturedAt)} (Cuiabá).`,`Texto gerado em ${time(now)} (Cuiabá). Confira se alguém já atacou antes de cobrar.`,
-    `Abrir clã no jogo: https://link.clashofclans.com/pt?action=OpenClanProfile&tag=${encodeURIComponent(known.tag.slice(1))}`
-  ].filter(line=>line!==undefined).join('\n');
+    `🔥 *ATAQUES PENDENTES · ${messageName(current.clan.name || known.name)}${war.kind==='cwl'?' · CWL':''}*`,
+    `*${total} ataque${total===1?'':'s'}* · ${pending.length} guerreiro${pending.length===1?'':'s'}`,
+    '',...pending.map(m=>`• #${m.position} ${m.name}${includeTags?` (${m.tag})`:''} — ${m.remaining}`),
+    '',`⚔️ Contra ${messageName(war.opponent?.name || 'Adversário')}${score}`,
+    `⏳ Faltam ${remaining} · término ${time(end)} (Brasília)`,
+    `📌 Coleta: ${time(current.warCapturedAt)} (Brasília)`
+  ].join('\n');
   return {text,clanTag:known.tag,players:pending.length,attacks:total,endAt:end,capturedAt:current.warCapturedAt,generatedAt:now};
 }
 export const whatsappUrl=text=>'https://wa.me/?text='+encodeURIComponent(text);
@@ -53,7 +49,7 @@ export function initWhatsApp({getSelectedClan,apiBase}) {
   const setActions=enabled=>{$('whatsapp-copy').disabled=!enabled;$('whatsapp-open').setAttribute('aria-disabled',String(!enabled));if(!enabled)$('whatsapp-open').removeAttribute('href');};
   function prepare(){
     if(!payload)return false;
-    try {message=pendingMessage(payload,{includeTags:$('whatsapp-tags').checked});$('whatsapp-preview').value=message.text;$('whatsapp-open').href=whatsappUrl(message.text);$('whatsapp-context').textContent=`${payload.current.clan.name} · ${message.attacks} ataque${message.attacks===1?'':'s'} pendente${message.attacks===1?'':'s'} de ${message.players} guerreiro${message.players===1?'':'s'} · Coleta: ${time(message.capturedAt)} (Cuiabá).`;$('whatsapp-error').textContent='';$('whatsapp-preview').closest('label').hidden=false;$('whatsapp-copy').closest('footer').hidden=false;setActions(true);return true;}
+    try {message=pendingMessage(payload,{includeTags:$('whatsapp-tags').checked});$('whatsapp-preview').value=message.text;$('whatsapp-open').href=whatsappUrl(message.text);$('whatsapp-context').textContent=`${payload.current.clan.name} · ${message.attacks} ataque${message.attacks===1?'':'s'} pendente${message.attacks===1?'':'s'} de ${message.players} guerreiro${message.players===1?'':'s'} · Coleta: ${time(message.capturedAt)} (Brasília).`;$('whatsapp-error').textContent='';$('whatsapp-preview').closest('label').hidden=false;$('whatsapp-copy').closest('footer').hidden=false;setActions(true);return true;}
     catch(error){message=null;$('whatsapp-status').textContent='';$('whatsapp-preview').value='';$('whatsapp-error').textContent=error.message;$('whatsapp-preview').closest('label').hidden=true;$('whatsapp-copy').closest('footer').hidden=true;setActions(false);return false;}
   }
   async function load(){

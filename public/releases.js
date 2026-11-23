@@ -1,6 +1,17 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.23.1",
+    "recordedAt": "2026-11-23T20:45:29.000Z",
+    "title": "Texto para WhatsApp mais limpo",
+    "changes": [
+      "A mensagem começa pelos ataques pendentes e lista cada guerreiro com a quantidade que ainda falta usar.",
+      "Depois dos ataques, aparecem o adversário, o tempo que falta, o término e a hora da coleta, sempre no horário de Brasília.",
+      "Encontre o recurso no botão Texto para WhatsApp, no resumo de atenção ou na guerra do clã."
+    ],
+    "section": "player"
+  },
+  {
     "version": "2026.11.19.16",
     "recordedAt": "2026-11-19T18:09:38.000Z",
     "title": "Ajustes de leitura no computador e no celular",

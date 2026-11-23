@@ -3,14 +3,15 @@ import assert from 'node:assert/strict';
 import { pendingMessage, whatsappUrl, messageName } from '../public/whatsapp.js';
 const now=Date.parse('2026-11-19T12:00:00Z');const tag='#R0UPVVVY';
 function payload(){return {configured:true,clanTag:tag,health:{code:'ok'},current:{capturedAt:now,warCapturedAt:now,clan:{tag,name:'TIGERS OF WAR 4'},war:{state:'inWar',kind:'regular',teamSize:3,endTime:'20261119T133000.000Z',clan:{tag,stars:3,members:[{tag:'#98Q9LLG2P',name:'Ana',mapPosition:2,attacks:[{stars:3}]},{tag:'#QC9RY8GJ',name:'João 🐯',mapPosition:1},{tag:'#28L88PQ2',name:'Beto',mapPosition:3,attacks:[{stars:0},{stars:0}]}]},opponent:{tag:'#202YP22U9',name:'Adversário',stars:2}}}};}
-test('mensagem lista somente pendentes, ordena por posição e mostra coleta e prazo em Cuiabá',()=>{
+test('mensagem lista os ataques primeiro, ordena por posição e mostra coleta e prazo em Brasília',()=>{
  const result=pendingMessage(payload(),{now});assert.equal(result.attacks,3);assert.equal(result.players,2);assert.ok(result.text.indexOf('#1 João')<result.text.indexOf('#2 Ana'));
- assert.match(result.text,/Ana — 1\/2 ataques disponíveis/);assert.match(result.text,/João 🐯 — 2\/2 ataques disponíveis/);assert.ok(!result.text.includes('Beto'));
- assert.match(result.text,/19\/11\/2026, 09:30 \(Cuiabá\)/);assert.match(result.text,/1h 30min/);assert.match(result.text,/Coleta da guerra:/);assert.match(result.text,/TIGERS OF WAR 4/);
+ assert.ok(result.text.indexOf('ATAQUES PENDENTES')<result.text.indexOf('Contra'));assert.match(result.text,/\*3 ataques\* · 2 guerreiros/);
+ assert.match(result.text,/• #1 João 🐯 — 2\n• #2 Ana — 1/);assert.ok(!result.text.includes('Beto'));assert.ok(!result.text.includes('Cuiabá'));
+ assert.match(result.text,/Faltam 1h30 · término 19\/11\/2026, 10:30 \(Brasília\)/);assert.match(result.text,/Coleta: 19\/11\/2026, 09:00 \(Brasília\)/);assert.match(result.text,/TIGERS OF WAR 4/);
 });
 test('tags são opcionais e CWL exige um ataque por jogador',()=>{
  const input=payload();input.current.war.kind='cwl';input.current.war.attacksPerMember=1;input.current.war.clan.members=input.current.war.clan.members.slice(0,2);input.current.war.teamSize=2;
- const result=pendingMessage(input,{now,includeTags:true});assert.equal(result.attacks,1);assert.equal(result.players,1);assert.match(result.text,/Liga de Guerra/);assert.match(result.text,/João 🐯 \(#QC9RY8GJ\) — 1\/1 ataque disponível/);
+ const result=pendingMessage(input,{now,includeTags:true});assert.equal(result.attacks,1);assert.equal(result.players,1);assert.match(result.text,/CWL/);assert.match(result.text,/João 🐯 \(#QC9RY8GJ\) — 1/);
  assert.ok(!pendingMessage(payload(),{now}).text.includes('(#QC9RY8GJ)'));
 });
 test('bloqueia guerras privadas, parciais, fora do prazo ou sem monitor configurado',()=>{
@@ -35,7 +36,7 @@ test('sem pendências informa missão cumprida em vez de criar uma cobrança vaz
 });
 test('nomes não injetam quebras de linha ou formatação e Unicode é preservado',()=>{
  assert.equal(messageName('*Ana*\n_@todos_\u202e ~teste~'),'Ana @todos teste');
- const p=payload();p.current.war.opponent.name='*Oponente*\nFalso';const text=pendingMessage(p,{now}).text;assert.match(text,/Adversário:\* Oponente Falso/);assert.ok(!text.includes('\nFalso'));
+ const p=payload();p.current.war.opponent.name='*Oponente*\nFalso';const text=pendingMessage(p,{now}).text;assert.match(text,/Contra Oponente Falso/);assert.ok(!text.includes('\nFalso'));
 });
 test('link do WhatsApp codifica texto inteiro sem número ou grupo pré-selecionado',()=>{
  const text=pendingMessage(payload(),{now}).text;const url=new URL(whatsappUrl(text));assert.equal(url.origin,'https://wa.me');assert.equal(url.pathname,'/');assert.equal(url.searchParams.get('text'),text);assert.equal(url.searchParams.has('phone'),false);
