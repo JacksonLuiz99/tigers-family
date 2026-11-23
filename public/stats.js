@@ -64,3 +64,28 @@ export function publicLinks(env) {
     discord: /^https:\/\/(?:discord\.gg\/[A-Za-z0-9-]+|discord\.com\/(?:invite\/[A-Za-z0-9-]+|channels\/\d+\/\d+))$/.test(discord) ? discord : null
   };
 }
+
+// Mês calendário em horário de Brasília (AAAA-MM).
+export function brasiliaMonth(ms) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' }).format(ms).slice(0, 7);
+}
+
+// Pódio do mês: mesmo critério do pódio da guerra, aplicado às guerras encerradas do mês.
+// Só entra quem usou pelo menos `minParticipation`% dos ataques disponíveis no mês.
+// `truncated` indica que a lista pode ter começado no meio do mês (limite de guerras guardadas).
+export function monthlyPodium(wars = [], nowMs = Date.now(), { minParticipation = 50, storeLimit = 20 } = {}) {
+  const month = brasiliaMonth(nowMs);
+  const known = wars.filter(w => w && Number.isFinite(parseGameTime(w.endTime)));
+  const inMonth = known.filter(w => brasiliaMonth(parseGameTime(w.endTime)) === month);
+  const players = performance(inMonth, { completedOnly: true });
+  const eligible = players.filter(p => p.participation >= minParticipation);
+  const oldest = known.length ? Math.min(...known.map(w => parseGameTime(w.endTime))) : null;
+  return {
+    month,
+    wars: inMonth.length,
+    players: podiumHighlights(eligible),
+    eligible: eligible.length,
+    considered: players.length,
+    truncated: known.length >= storeLimit && oldest !== null && brasiliaMonth(oldest) === month
+  };
+}

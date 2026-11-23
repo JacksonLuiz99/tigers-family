@@ -1,6 +1,18 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.23.2",
+    "recordedAt": "2026-11-23T21:02:38.000Z",
+    "title": "Pódio do mês por clã",
+    "changes": [
+      "Em Campo de batalha, o pódio agora pode mostrar a Guerra atual ou o Mês. Escolha o clã e alterne entre os dois botões acima do pódio.",
+      "O pódio do mês usa o mesmo critério da guerra: estrelas dos ataques, depois triplos, destruição média, ataques usados e nome.",
+      "Só entra no pódio do mês quem usou pelo menos 50% dos ataques disponíveis no mês. O mês é contado no horário de Brasília e considera só guerras já encerradas.",
+      "Se o painel tiver guardado apenas as 20 guerras mais recentes e elas começarem dentro do mês, aparece um aviso de que o pódio pode estar incompleto."
+    ],
+    "section": "player"
+  },
+  {
     "version": "2026.11.23.1",
     "recordedAt": "2026-11-23T20:45:29.000Z",
     "title": "Texto para WhatsApp mais limpo",

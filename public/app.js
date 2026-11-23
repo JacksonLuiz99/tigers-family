@@ -8,7 +8,7 @@ import { initIntelligence } from './intelligence.js';
 import { initPlayer } from './player.js';
 import { REPORTS, buildExport, createDownload } from './exports.js';
 import { CLANS, DEFAULT_CLAN, findClan, preferredClan } from './clans.js';
-import { performance, mergedHistory, outcome, parseGameTime, publicLinks, podiumHighlights } from './stats.js';
+import { performance, mergedHistory, outcome, parseGameTime, publicLinks, podiumHighlights, monthlyPodium } from './stats.js';
 const $ = id => document.getElementById(id);
 const num = (value, digits = 0) => value == null || !Number.isFinite(Number(value)) ? '—' : Number(value).toLocaleString('pt-BR', {maximumFractionDigits:digits});
 const date = value => value ? new Date(value).toLocaleString('pt-BR', {timeZone:'America/Cuiaba',dateStyle:'short',timeStyle:'short'}) : '—';
@@ -29,6 +29,7 @@ let reminderOpened=false;
 let activeRequest = 0; let activeController = null;
 const viewCache = new Map();
 const navigation=initNavigation();
+let podiumMode = 'current';
 let exportSnapshot = null;let intelligence = null;let management = null;let whatsapp = null;let player = null;
 function setClanIdentity(clan = findClan(selectedClan)) {
   $('clan-select').value = selectedClan;navigation.setClan(findClan(selectedClan)?.label || selectedClan);
@@ -104,16 +105,26 @@ function renderRankings() {
   const players = performance(wars,{completedOnly:historical});
   $('ranking-table').innerHTML = rankingRows(players);
   $('ranking-note').textContent = historical ? 'Somente guerras encerradas com detalhes individuais salvos pelo monitor. Participação: ataques realizados / disponíveis.' : 'Ataques da guerra atual. O ranking pode mudar até o encerramento.';
-  const top = podiumHighlights(performance([data?.current?.war]));
+  const monthMode = podiumMode === 'month';
+  const monthly = monthMode ? monthlyPodium(data?.wars || [], Date.now()) : null;
+  const top = monthMode ? monthly.players : podiumHighlights(performance([data?.current?.war]));
+  document.querySelectorAll('[data-podium-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.podiumMode === podiumMode)));
+  $('podium-criteria').textContent = monthMode
+    ? `Pódio do mês (${monthly.month}, horário de Brasília): só guerras já encerradas do mês. Entra quem usou pelo menos 50% dos ataques disponíveis no mês. Ordem: estrelas dos ataques, depois triplos, destruição média, ataques usados e nome.`
+    : 'Destaques da guerra atual: estrelas dos ataques, depois triplos e destruição média. Estrelas de ataques repetidos não equivalem a estrelas novas no placar.';
   const cup = '<svg viewBox="0 0 64 72" fill="none" aria-hidden="true"><path d="M17 10h30v19c0 12-7 20-15 20s-15-8-15-20V10Z" fill="currentColor" fill-opacity=".15" stroke="currentColor" stroke-width="3"/><path d="M17 16H7v9c0 10 5 15 14 16m26-25h10v9c0 10-5 15-14 16M32 49v12m-12 5h24M24 61h16v5H24Z" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="m32 19 3 6 7 1-5 5 1 7-6-4-6 4 1-7-5-5 7-1Z" fill="currentColor"/><path d="m22 2 10 4 10-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
   $('top-warriors').classList.toggle('is-empty',!top.length);
   $('top-warriors').setAttribute('role',top.length?'list':'region');
-  $('top-warriors').innerHTML = top.length ? top.map((p,i) => `<article class="podium-card podium-${['gold','silver','bronze'][i]}" role="listitem" aria-label="Destaque ${i+1}: ${esc(p.name)}${p.tiedWith?' — empate nos indicadores':''}"><span class="podium-honor">${['OURO · PONTA DE LANÇA','PRATA · FORÇA DE ATAQUE','BRONZE · PODER DE FOGO'][i]}</span><div class="podium-medallion">${cup}</div><div class="podium-body"><h3 class="podium-player"><a href="${esc(playerLink(p.tag))}" target="_blank" rel="noopener noreferrer">${esc(p.name)} ↗</a></h3><span class="podium-profile">CV ${num(p.townHall)} · ${esc(p.tag)}</span><div class="podium-stars">${p.stars} <small aria-label="estrelas">★</small></div><span class="podium-stars-label">ESTRELAS DOS ATAQUES</span><div class="podium-numbers"><div><strong>${p.triples}</strong><span>TRIPLOS</span></div><div><strong>${num(p.averageDamage,1)}%</strong><span>DESTRUIÇÃO MÉDIA</span></div><div><strong>${p.attacks}/${p.expected}</strong><span>ATAQUES USADOS</span></div></div>${p.tiedWith?`<span class="podium-tie">EMPATE NOS INDICADORES · +${p.tiedWith} GUERREIRO${p.tiedWith===1?'':'S'}</span>`:''}</div><div class="podium-step" aria-hidden="true"><span class="podium-position">0${i+1}</span><small>TIGERS OF WAR</small></div></article>`).join('') : empty('O pódio aguarda os primeiros ataques desta guerra. Nenhum guerreiro é destacado sem um ataque registrado.');
+  $('top-warriors').innerHTML = top.length ? top.map((p,i) => `<article class="podium-card podium-${['gold','silver','bronze'][i]}" role="listitem" aria-label="Destaque ${i+1}: ${esc(p.name)}${p.tiedWith?' — empate nos indicadores':''}"><span class="podium-honor">${['OURO · PONTA DE LANÇA','PRATA · FORÇA DE ATAQUE','BRONZE · PODER DE FOGO'][i]}</span><div class="podium-medallion">${cup}</div><div class="podium-body"><h3 class="podium-player"><a href="${esc(playerLink(p.tag))}" target="_blank" rel="noopener noreferrer">${esc(p.name)} ↗</a></h3><span class="podium-profile">CV ${num(p.townHall)} · ${esc(p.tag)}</span><div class="podium-stars">${p.stars} <small aria-label="estrelas">★</small></div><span class="podium-stars-label">ESTRELAS DOS ATAQUES</span><div class="podium-numbers"><div><strong>${p.triples}</strong><span>TRIPLOS</span></div><div><strong>${num(p.averageDamage,1)}%</strong><span>DESTRUIÇÃO MÉDIA</span></div><div><strong>${p.attacks}/${p.expected}</strong><span>ATAQUES USADOS</span></div></div>${p.tiedWith?`<span class="podium-tie">EMPATE NOS INDICADORES · +${p.tiedWith} GUERREIRO${p.tiedWith===1?'':'S'}</span>`:''}</div><div class="podium-step" aria-hidden="true"><span class="podium-position">0${i+1}</span><small>TIGERS OF WAR</small></div></article>`).join('') : empty(monthMode ? `Ainda não há guerras encerradas com ataques individuais em ${monthly.month} que atendam ao critério de participação.` : 'O pódio aguarda os primeiros ataques desta guerra. Nenhum guerreiro é destacado sem um ataque registrado.');
   const tied = top.some(p=>p.tiedWith>0);
   $('podium-tie-note').hidden = !tied;
   $('podium-tie-note').textContent = tied ? 'Empates nos indicadores são ordenados alfabeticamente. Consulte o ranking completo para ver todos os guerreiros com o mesmo desempenho.' : '';
+  const coverage = monthMode && monthly.truncated ? 'O painel guarda as 20 guerras mais recentes deste clã. O pódio do mês pode estar incompleto.' : monthMode && monthly.wars ? `Pódio calculado com ${monthly.wars} guerra${monthly.wars===1?'':'s'} encerrada${monthly.wars===1?'':'s'} com detalhes salvos pelo monitor.` : '';
+  $('podium-coverage').hidden = !coverage;
+  $('podium-coverage').textContent = coverage;
 
 }
+document.querySelectorAll('[data-podium-mode]').forEach(b => b.addEventListener('click', () => { podiumMode = b.dataset.podiumMode; renderRankings(); }));
 $('ranking-scope').addEventListener('change',renderRankings);
 function updateClock() {
   const node = $('war-clock');if(!node) return;
