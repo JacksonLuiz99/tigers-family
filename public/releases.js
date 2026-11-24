@@ -1,6 +1,16 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.24.5",
+    "recordedAt": "2026-11-24T16:41:08.000Z",
+    "title": "Resultados antigos no comparativo",
+    "changes": [
+      "Em Família, o comparativo anual passa a aproveitar também as guerras detalhadas que o painel já havia guardado, assim que cada clã for atualizado.",
+      "A cobertura exibida continua limitada aos resultados realmente disponíveis."
+    ],
+    "section": "family"
+  },
+  {
     "version": "2026.11.24.4",
     "recordedAt": "2026-11-24T16:30:49.000Z",
     "title": "Mais tempo para avaliar a tropa",

@@ -1,5 +1,5 @@
 import { detectEvents, gameTime, orientWar, warId } from './events.js';
-import { recordWarResults } from './results.js';
+import { recordWarResults, backfillAnnualResults } from './results.js';
 import { recordDetailedWars } from './detailed-wars.js';
 
 export async function clash(env, path) {
@@ -165,6 +165,12 @@ export async function synchronize(env, now = Date.now()) {
       await recordDetailedWars(env.DB,env.CLAN_TAG,[...previousWars,...observedWars],now);
       if(!backfilled)await stateStatement(env.DB,'detail_backfill_primary',true).run();
     } catch { /* O histórico detalhado não interrompe a coleta. */ }
+    try {
+      if(!await readState(env.DB,'annual_backfill_primary')) {
+        await backfillAnnualResults(env.DB,env.CLAN_TAG,now);
+        await stateStatement(env.DB,'annual_backfill_primary',true).run();
+      }
+    } catch { /* A próxima coleta tentará novamente. */ }
     return { ok: true, warning, events:detected.length };
   } catch (e) {
     const code=/^(api_[a-z0-9_]+|invalid_clan_response)$/.test(e.message) ? e.message : 'sync_failed';

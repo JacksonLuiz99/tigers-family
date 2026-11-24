@@ -3,7 +3,7 @@ import { clash, readState, stateStatement, loadWar, loadExtras } from './monitor
 import { detectEvents, warId, gameTime } from './events.js';
 import { findClan, CLANS } from '../public/clans.js';
 import { publicLinks } from '../public/stats.js';
-import { recordWarResults } from './results.js';
+import { recordWarResults, backfillAnnualResults } from './results.js';
 import { recordDetailedWars } from './detailed-wars.js';
 
 const CACHE_MS = 300000;
@@ -69,6 +69,7 @@ export async function familyDashboard(env, tag, now = Date.now()) {
       await recordDetailedWars(env.DB,tag,detailsBackfilled ? (warResult.status==='fulfilled' ? warResult.value.observedWars || [war] : []) : saved.wars,now);
       if(!detailsBackfilled){saved.detailsBackfilled=true;await stateStatement(env.DB,key,saved).run();}
     } catch { /* O histórico detalhado não interrompe a coleta. */ }
+    if(!saved.annualBackfilled) try {await backfillAnnualResults(env.DB,tag,now);saved.annualBackfilled=true;await stateStatement(env.DB,key,saved).run();} catch { /* A próxima coleta tentará novamente. */ }
     if(saved.current?.capturedAt===now) await recordRoster(env,saved.current.clan,now);
     return responseFor(env,tag,saved,now);
   } catch (error) {

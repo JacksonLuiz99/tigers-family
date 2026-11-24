@@ -45,3 +45,8 @@ export async function familyResults(db, now = Date.now()) {
     FROM family_war_results WHERE end_at >= ? AND end_at <= ? GROUP BY clan_tag`).bind(from,now).all();
   return {from,to:now,clans:result.results};
 }
+
+export async function backfillAnnualResults(db, clanTag, now = Date.now()) {
+  const rows=await db.prepare('SELECT payload FROM detailed_wars WHERE clan_tag=? AND end_at>=? ORDER BY end_at DESC').bind(clanTag,now-366*86400000).all();
+  await recordWarResults(db,clanTag,rows.results.map(row=>JSON.parse(row.payload)),now);
+}
