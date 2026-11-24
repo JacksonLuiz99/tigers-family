@@ -1,6 +1,46 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.24.4",
+    "recordedAt": "2026-11-24T16:30:49.000Z",
+    "title": "Mais tempo para avaliar a tropa",
+    "changes": [
+      "Em Elite de guerra, escolha as datas para comparar os jogadores em até oito meses de guerras acompanhadas.",
+      "O painel mostra o intervalo de confrontos detalhados disponíveis e informa que guerras privadas ou falhas de coleta podem deixar lacunas."
+    ],
+    "section": "rankings"
+  },
+  {
+    "version": "2026.11.24.3",
+    "recordedAt": "2026-11-24T16:21:52.000Z",
+    "title": "Conquistas dos clãs no ano",
+    "changes": [
+      "Em Família, compare os clãs pelos resultados de guerra disponíveis nos últimos 365 dias e ordene por vitórias ou estrelas no placar.",
+      "A tabela mostra o intervalo registrado para cada clã e separa as estrelas dos ataques quando existem detalhes individuais."
+    ],
+    "section": "family"
+  },
+  {
+    "version": "2026.11.24.2",
+    "recordedAt": "2026-11-24T16:16:45.000Z",
+    "title": "Ranking por período",
+    "changes": [
+      "Em Elite de guerra, escolha Guerras encerradas acompanhadas e filtre por data inicial e final para avaliar os jogadores no período desejado.",
+      "O ranking mostra quantas guerras detalhadas entraram no cálculo e avisa quando o histórico antigo pode estar incompleto."
+    ],
+    "section": "rankings"
+  },
+  {
+    "version": "2026.11.24.1",
+    "recordedAt": "2026-11-24T16:14:41.000Z",
+    "title": "Distribuição de estrelas na guerra",
+    "changes": [
+      "Em Campo de batalha, veja quantos ataques terminaram com zero, uma, duas ou três estrelas e a porcentagem de cada resultado.",
+      "Os percentuais consideram apenas os ataques já registrados na guerra selecionada."
+    ],
+    "section": "wars"
+  },
+  {
     "version": "2026.11.23.2",
     "recordedAt": "2026-11-23T21:02:38.000Z",
     "title": "Pódio do mês por clã",

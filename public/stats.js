@@ -29,6 +29,17 @@ export function performance(wars, { completedOnly = false } = {}) {
     .sort((a,b) => b.stars-a.stars || b.triples-a.triples || b.averageDamage-a.averageDamage || b.attacks-a.attacks || a.name.localeCompare(b.name, 'pt-BR'));
 }
 
+export function attackStars(war) {
+  const counts = [0, 0, 0, 0];
+  for (const member of war?.clan?.members || []) {
+    for (const attack of member.attacks || []) {
+      if (Number.isInteger(attack.stars) && attack.stars >= 0 && attack.stars <= 3) counts[attack.stars]++;
+    }
+  }
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  return { counts, total, percentages: counts.map(count => total ? 100 * count / total : 0) };
+}
+
 export function outcome(war) {
   if (war.result) return ({win:'Vitória',lose:'Derrota',tie:'Empate'})[war.result] || 'Encerrada';
   if (war.state !== 'warEnded') return ({inWar:'Em guerra',preparation:'Preparação'})[war.state] || 'Sem resultado';

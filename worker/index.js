@@ -5,6 +5,8 @@ import { readState, synchronize } from './monitor.js';
 import { publicLinks } from '../public/stats.js';
 import { CLANS, DEFAULT_CLAN, findClan } from '../public/clans.js';
 import { familyDashboard, familyOverview, synchronizeFamily, recordPrimarySummary, locatePlayer, isPlayerTag } from './family.js';
+import { familyResults } from './results.js';
+import { detailedRanking } from './detailed-wars.js';
 
 const json = (data,status=200,headers={}) => Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 
@@ -66,6 +68,18 @@ export async function route(request,env) {
   }
   if(path === '/api/family' && request.method === 'GET') {
     try {return json(await familyOverview(env),200,headers);} catch {return json({error:'family_unavailable'},503,headers);}
+  }
+  if(path === '/api/family-results') {
+    if(request.method !== 'GET') return json({error:'method_not_allowed'},405,headers);
+    try {return json(await familyResults(env.DB),200,headers);} catch {return json({error:'results_unavailable'},503,headers);}
+  }
+  if(path === '/api/detailed-ranking') {
+    if(request.method !== 'GET') return json({error:'method_not_allowed'},405,headers);
+    if(!env.DB) return json({error:'database_unavailable'},503,headers);
+    try {
+      const result=await detailedRanking(env.DB,url.searchParams.get('clan'),url.searchParams.get('from') || '',url.searchParams.get('to') || '');
+      return json(result,result.error ? 400 : 200,headers);
+    } catch {return json({error:'ranking_unavailable'},503,headers);}
   }
   if (path === '/api/alert-channels') {
     if (request.method !== 'POST') return json({error:'method_not_allowed'},405,headers);

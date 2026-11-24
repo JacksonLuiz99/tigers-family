@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { performance, mergedHistory, publicLinks, outcome, podiumHighlights } from '../public/stats.js';
+import { performance, mergedHistory, publicLinks, outcome, podiumHighlights, attackStars } from '../public/stats.js';
+test('distribuição conta ataques por estrelas sem usar o placar',()=>{
+  assert.deepEqual(attackStars(war()).counts,[0,0,1,2]);
+  assert.equal(attackStars(war()).total,3);
+  assert.deepEqual(attackStars(null).percentages,[0,0,0,0]);
+});
 const war = (state = 'inWar') => ({ state, kind:'regular', startTime:'20261118T010000.000Z',endTime:'20261119T010000.000Z',teamSize:2,
   clan:{tag:'#HOME',stars:5,destructionPercentage:95,members:[
     {tag:'#A',name:'Ana',townhallLevel:19,mapPosition:1,attacks:[{stars:3,destructionPercentage:100,duration:120,defenderTag:'#X'},{stars:3,destructionPercentage:100,duration:130,defenderTag:'#Y'}]},

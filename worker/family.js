@@ -3,6 +3,8 @@ import { clash, readState, stateStatement, loadWar, loadExtras } from './monitor
 import { detectEvents, warId, gameTime } from './events.js';
 import { findClan, CLANS } from '../public/clans.js';
 import { publicLinks } from '../public/stats.js';
+import { recordWarResults } from './results.js';
+import { recordDetailedWars } from './detailed-wars.js';
 
 const CACHE_MS = 300000;
 function responseFor(env, tag, saved, now = Date.now()) {
@@ -49,8 +51,10 @@ export async function familyDashboard(env, tag, now = Date.now()) {
     if (!warning) for (const observed of warResult.value.observedWars || (war?[war]:[])) wars.set(warId(observed),observed);
     const snapshots = (saved?.snapshots || []).filter(s=>s.capturedAt >= now-26*3600000);
     if (!snapshots.some(s=>Math.floor(s.capturedAt/3600000)===Math.floor(now/3600000))) snapshots.push({clan,capturedAt:now});
+    const detailsBackfilled=saved?.detailsBackfilled === true;
     saved = {
       managementVersion:1,coverageStartedAt:saved?.coverageStartedAt || previous?.capturedAt || now,
+      detailsBackfilled,
       timeline:dailyTimeline(saved?.timeline,clan,now),
       attemptedAt:now,current,health:{lastAttempt:now,lastSuccess:now,code:warning || 'ok'},
       events:[...events.values()].sort((a,b)=>b.created_at-a.created_at).slice(0,30),
@@ -60,6 +64,11 @@ export async function familyDashboard(env, tag, now = Date.now()) {
     };
     await stateStatement(env.DB,key,saved).run();
     await stateStatement(env.DB,`summary:${tag}`,clanSummary(tag,saved)).run();
+    try { await recordWarResults(env.DB,tag,[...(warResult.status==='fulfilled' ? warResult.value.observedWars || [] : []),...(saved.extras?.attemptedAt===now ? saved.extras?.warLog?.items || [] : [])],now); } catch { /* O comparativo não interrompe a coleta. */ }
+    try {
+      await recordDetailedWars(env.DB,tag,detailsBackfilled ? (warResult.status==='fulfilled' ? warResult.value.observedWars || [war] : []) : saved.wars,now);
+      if(!detailsBackfilled){saved.detailsBackfilled=true;await stateStatement(env.DB,key,saved).run();}
+    } catch { /* O histórico detalhado não interrompe a coleta. */ }
     if(saved.current?.capturedAt===now) await recordRoster(env,saved.current.clan,now);
     return responseFor(env,tag,saved,now);
   } catch (error) {

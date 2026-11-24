@@ -8,7 +8,7 @@ import { initIntelligence } from './intelligence.js';
 import { initPlayer } from './player.js';
 import { REPORTS, buildExport, createDownload } from './exports.js';
 import { CLANS, DEFAULT_CLAN, findClan, preferredClan } from './clans.js';
-import { performance, mergedHistory, outcome, parseGameTime, publicLinks, podiumHighlights, monthlyPodium } from './stats.js';
+import { performance, mergedHistory, outcome, parseGameTime, publicLinks, podiumHighlights, monthlyPodium, attackStars } from './stats.js';
 const $ = id => document.getElementById(id);
 const num = (value, digits = 0) => value == null || !Number.isFinite(Number(value)) ? '—' : Number(value).toLocaleString('pt-BR', {maximumFractionDigits:digits});
 const date = value => value ? new Date(value).toLocaleString('pt-BR', {timeZone:'America/Cuiaba',dateStyle:'short',timeStyle:'short'}) : '—';
@@ -30,6 +30,7 @@ let activeRequest = 0; let activeController = null;
 const viewCache = new Map();
 const navigation=initNavigation();
 let podiumMode = 'current';
+let rankingKey=null;let rankingData=null;let rankingController=null;
 let exportSnapshot = null;let intelligence = null;let management = null;let whatsapp = null;let player = null;
 function setClanIdentity(clan = findClan(selectedClan)) {
   $('clan-select').value = selectedClan;navigation.setClan(findClan(selectedClan)?.label || selectedClan);
@@ -40,6 +41,7 @@ function setClanIdentity(clan = findClan(selectedClan)) {
   $('clan-monitoring-note').textContent = selectedClan === DEFAULT_CLAN ? 'Monitoramento automático. Os avisos deste clã já estão configurados.' : 'Coleta automática a cada 15 min. Os canais de avisos deste clã serão configurados depois.';
 }
 function clearClanData() {
+  rankingController?.abort();rankingController=null;rankingKey=null;rankingData=null;
   $('export-dialog').close();exportSnapshot = null;$('open-export').disabled = true;$('download-message').textContent = '';
   whatsapp?.close();data = null;intelligence?.clear();management?.clear();
   for (const id of ['metric-wins','metric-members','metric-trophies','metric-league','metric-level','metric-streak']) $(id).textContent = '—';
@@ -101,10 +103,17 @@ function rankingRows(players) {
 }
 function renderRankings() {
   const historical = $('ranking-scope').value === 'history';
-  const wars = historical ? data?.wars || [] : [data?.current?.war];
-  const players = performance(wars,{completedOnly:historical});
-  $('ranking-table').innerHTML = rankingRows(players);
-  $('ranking-note').textContent = historical ? 'Somente guerras encerradas com detalhes individuais salvos pelo monitor. Participação: ataques realizados / disponíveis.' : 'Ataques da guerra atual. O ranking pode mudar até o encerramento.';
+  $('ranking-dates').hidden = !historical;
+  if (historical) {
+    const key=`${selectedClan}:${$('ranking-from').value}:${$('ranking-to').value}`;
+    if(key!==rankingKey){rankingController?.abort();rankingKey=key;rankingData=null;if(data?.clanTag===selectedClan)loadDetailedRanking(key);}
+    if(rankingData?.key===key){$('ranking-table').innerHTML=rankingRows(rankingData.players);$('ranking-note').textContent=rankingData.note;}
+    else {$('ranking-table').innerHTML=empty('Consultando ataques encerrados deste período…');$('ranking-note').textContent='O histórico detalhado pode cobrir até oito meses, conforme as guerras acompanhadas.';}
+  } else {
+    rankingController?.abort();rankingController=null;rankingKey=null;rankingData=null;
+    $('ranking-table').innerHTML=rankingRows(performance([data?.current?.war]));
+    $('ranking-note').textContent='Ataques da guerra atual. O ranking pode mudar até o encerramento.';
+  }
   const monthMode = podiumMode === 'month';
   const monthly = monthMode ? monthlyPodium(data?.wars || [], Date.now()) : null;
   const top = monthMode ? monthly.players : podiumHighlights(performance([data?.current?.war]));
@@ -124,8 +133,29 @@ function renderRankings() {
   $('podium-coverage').textContent = coverage;
 
 }
+async function loadDetailedRanking(key) {
+  const controller=new AbortController();rankingController=controller;
+  const tag=selectedClan;const from=$('ranking-from').value;const to=$('ranking-to').value;
+  try {
+    const base=window.CLAN_CONFIG?.apiBase || '';
+    const params=new URLSearchParams({clan:tag});if(from)params.set('from',from);if(to)params.set('to',to);
+    const response=await fetch(`${base}/api/detailed-ranking?${params}`,{signal:controller.signal});
+    const result=await response.json();
+    if(key!==rankingKey || tag!==selectedClan || $('ranking-scope').value!=='history')return;
+    if(!response.ok)throw new Error(result.error==='invalid_period'?'Escolha até oito meses de datas válidas dentro dos últimos 270 dias.':'Não foi possível consultar o histórico. Tente atualizar o painel.');
+    const earliest=result.coverage?.earliest;const latest=result.coverage?.latest;
+    const gap=earliest && result.from<earliest;
+    const note=`${result.wars} guerra${result.wars===1?'':'s'} encerrada${result.wars===1?'':'s'} com ataques individuais neste período. ${earliest?`Detalhes guardados de ${date(earliest)} a ${date(latest)}. `:'Ainda não há confrontos detalhados guardados para este clã. '}${gap?'O período começa antes do primeiro confronto detalhado disponível. ':''}${result.coverage?.truncated?'Há mais confrontos do que esta consulta consegue mostrar. Reduza o período. ':''}Guerras privadas e falhas de coleta podem criar lacunas. Datas em Cuiabá.`;
+    rankingData={key,players:result.players || [],note};
+    $('ranking-table').innerHTML=rankingRows(rankingData.players);$('ranking-note').textContent=note;
+  } catch(error) {
+    if(key!==rankingKey || tag!==selectedClan || controller.signal.aborted)return;
+    $('ranking-table').innerHTML=empty('Histórico indisponível para este período.');$('ranking-note').textContent=error.message || 'Não foi possível consultar o histórico.';
+  } finally {if(rankingController===controller)rankingController=null;}
+}
 document.querySelectorAll('[data-podium-mode]').forEach(b => b.addEventListener('click', () => { podiumMode = b.dataset.podiumMode; renderRankings(); }));
 $('ranking-scope').addEventListener('change',renderRankings);
+for (const id of ['ranking-from','ranking-to']) $(id).addEventListener('change',renderRankings);
 function updateClock() {
   const node = $('war-clock');if(!node) return;
   const war = data?.current?.war;const end = parseGameTime(war?.state === 'preparation' ? war.startTime : war?.endTime);
@@ -139,11 +169,12 @@ function renderWar(war) {
   if (!war) {$('war-state').textContent = 'AGUARDANDO GUERRA';$('war-summary').innerHTML = empty('A tropa está se preparando. A próxima guerra aparecerá aqui quando estiver disponível.');return;}
   $('war-state').textContent = `${war.kind === 'cwl'?'LIGA · ':''}${states[war.state] || war.state}`;
   const max = Math.max(1,war.teamSize*3);const limit = war.attacksPerMember ?? (war.kind === 'cwl'?1:2);
-  const players = performance([war]);const used = (war.clan.members || []).reduce((n,m) => n+(m.attacks?.length || 0),0);
+  const used = (war.clan.members || []).reduce((n,m) => n+(m.attacks?.length || 0),0);
   const expected = (war.clan.members?.length || war.teamSize)*limit;
   const pending = (war.clan.members || []).map(m => ({...m,remaining:Math.max(0,limit-(m.attacks?.length || 0))})).filter(m => m.remaining > 0).sort((a,b) => a.mapPosition-b.mapPosition);
-  const triples = players.reduce((n,p) => n+p.triples,0);
-  $('war-summary').innerHTML = `<div class="battle-meta"><span><strong>${war.teamSize} × ${war.teamSize}</strong> · ${war.kind === 'cwl'?'LIGA DE GUERRA':'GUERRA DE CLÃS'} · ${war.state === 'preparation'?'INÍCIO':'TÉRMINO'} ${date(parseGameTime(war.state === 'preparation'?war.startTime:war.endTime))}</span><span id="war-clock" class="battle-clock"></span></div><div class="war-score"><div class="war-team">${badge(war.clan.badgeUrls?.medium)}<div><div class="war-team-name">${esc(war.clan.name)}</div><div class="war-team-score">${num(war.clan.stars)}<span aria-label="estrelas"> ★</span></div><div class="war-team-meta">DE ${max} ESTRELAS POSSÍVEIS</div></div></div><span class="versus">VS</span><div class="war-team enemy">${badge(war.opponent.badgeUrls?.medium)}<div><div class="war-team-name">${esc(war.opponent.name)}</div><div class="war-team-score">${num(war.opponent.stars)} ★</div><div class="war-team-meta">DE ${max} ESTRELAS POSSÍVEIS</div></div></div></div><div class="war-progress"><label><span>DESTRUIÇÃO DOS TIGERS <b>${num(war.clan.destructionPercentage,2)}%</b></span><progress max="100" value="${Number(war.clan.destructionPercentage || 0)}" aria-label="Destruição causada pelos Tigers"></progress></label><label class="enemy"><span>DESTRUIÇÃO ADVERSÁRIA <b>${num(war.opponent.destructionPercentage,2)}%</b></span><progress max="100" value="${Number(war.opponent.destructionPercentage || 0)}" aria-label="Destruição causada pelo adversário"></progress></label></div><div class="war-mission"><div><strong>${used}/${expected}</strong><span>ATAQUES REALIZADOS</span></div><div><strong>${Math.max(0,expected-used)}</strong><span>ATAQUES DISPONÍVEIS</span></div><div><strong>${triples}</strong><span>ATAQUES DE TRÊS ESTRELAS</span></div></div>`;
+  const distribution = attackStars(war);
+  const triples = distribution.counts[3];
+  $('war-summary').innerHTML = `<div class="battle-meta"><span><strong>${war.teamSize} × ${war.teamSize}</strong> · ${war.kind === 'cwl'?'LIGA DE GUERRA':'GUERRA DE CLÃS'} · ${war.state === 'preparation'?'INÍCIO':'TÉRMINO'} ${date(parseGameTime(war.state === 'preparation'?war.startTime:war.endTime))}</span><span id="war-clock" class="battle-clock"></span></div><div class="war-score"><div class="war-team">${badge(war.clan.badgeUrls?.medium)}<div><div class="war-team-name">${esc(war.clan.name)}</div><div class="war-team-score">${num(war.clan.stars)}<span aria-label="estrelas"> ★</span></div><div class="war-team-meta">DE ${max} ESTRELAS POSSÍVEIS</div></div></div><span class="versus">VS</span><div class="war-team enemy">${badge(war.opponent.badgeUrls?.medium)}<div><div class="war-team-name">${esc(war.opponent.name)}</div><div class="war-team-score">${num(war.opponent.stars)} ★</div><div class="war-team-meta">DE ${max} ESTRELAS POSSÍVEIS</div></div></div></div><div class="war-progress"><label><span>DESTRUIÇÃO DOS TIGERS <b>${num(war.clan.destructionPercentage,2)}%</b></span><progress max="100" value="${Number(war.clan.destructionPercentage || 0)}" aria-label="Destruição causada pelos Tigers"></progress></label><label class="enemy"><span>DESTRUIÇÃO ADVERSÁRIA <b>${num(war.opponent.destructionPercentage,2)}%</b></span><progress max="100" value="${Number(war.opponent.destructionPercentage || 0)}" aria-label="Destruição causada pelo adversário"></progress></label></div><div class="war-mission"><div><strong>${used}/${expected}</strong><span>ATAQUES REALIZADOS</span></div><div><strong>${Math.max(0,expected-used)}</strong><span>ATAQUES DISPONÍVEIS</span></div><div><strong>${triples}</strong><span>ATAQUES DE TRÊS ESTRELAS</span></div></div><section class="star-distribution" aria-label="Distribuição de estrelas dos ataques"><h3>Estrelas por ataque</h3><p class="footnote">${distribution.total ? `${distribution.total} ataques registrados nesta guerra. Percentuais sobre os ataques realizados, não uma previsão do resultado.` : "A distribuição aparece quando os primeiros ataques forem registrados."}</p><div class="star-distribution-grid">${[3,2,1,0].map(stars => `<div><span>${stars} ★</span><strong>${distribution.counts[stars]} <small>(${num(distribution.percentages[stars],1)}%)</small></strong><progress max="100" value="${distribution.percentages[stars]}" aria-label="Ataques com ${stars} estrelas: ${num(distribution.percentages[stars],1)}%"></progress></div>`).join('')}</div></section>`;
   if (war.state === 'inWar') $('pending').innerHTML = `<div class="pending-head"><strong>⚔ A TROPA AINDA TEM PODER DE FOGO</strong><span>${pending.length} jogadores com ataques disponíveis</span><button class="outline-button" type="button" data-whatsapp-clan="${esc(war.clan.tag)}">Texto para WhatsApp</button></div><div class="pending-list">${pending.map(m => `<div class="pending-item"><span>#${m.mapPosition} · ${esc(m.name)}</span><b>${m.remaining} ataque${m.remaining===1?'':'s'}</b></div>`).join('') || empty('Missão cumprida. Todos os ataques foram utilizados.')}</div>`;
   const members = [...(war.clan.members || [])].sort((a,b) => a.mapPosition-b.mapPosition);
   $('pending').insertAdjacentHTML('beforeend',`<details class="details-heading"><summary>Ver os ${members.length} guerreiros escalados e seus ataques</summary><div class="war-participants">${members.map(m => `<details><summary>#${m.mapPosition} · ${esc(m.name)} · CV ${num(m.townhallLevel ?? m.townHallLevel)} · ${m.attacks?.length || 0}/${limit} ataques</summary>${(m.attacks || []).map(a => {const opponent = war.opponent.members?.find(o => o.tag === a.defenderTag);return `<div class="member-hit"><span class="hit-stars">${'★'.repeat(a.stars || 0)}${'☆'.repeat(Math.max(0,3-(a.stars || 0)))}</span> · ${num(a.destructionPercentage)}% · alvo #${num(opponent?.mapPosition)} ${esc(opponent?.name || a.defenderTag)} · ${num(a.duration)}s</div>`;}).join('') || '<p class="footnote">Nenhum ataque registrado.</p>'}${m.bestOpponentAttack?`<p class="footnote">Melhor ataque recebido: ${num(m.bestOpponentAttack.stars)} ★ · ${num(m.bestOpponentAttack.destructionPercentage)}%.</p>`:''}</details>`).join('')}</div></details>`);
@@ -262,7 +293,7 @@ async function refresh() {
     const payload = await response.json();if(!response.ok && !payload.health) throw new Error('network');
     if(requestId!==activeRequest || tag!==selectedClan) return;
     if(payload.clanTag!==tag || (payload.current?.clan && payload.current.clan.tag!==tag)) throw new Error('wrong_clan');
-    viewCache.set(tag,payload);render(payload);
+    viewCache.set(tag,payload);rankingController?.abort();rankingController=null;rankingKey=null;rankingData=null;render(payload);
     if(incoming.reminder && !reminderOpened && incoming.tag===tag){reminderOpened=true;whatsapp.open(tag);const clean=new URL(location.href);clean.searchParams.delete('reminder');history.replaceState(null,'',clean.pathname+clean.search);}
     document.querySelectorAll('#pending details').forEach(d => {if(openMembers.includes(d.querySelector('summary')?.textContent)) d.open = true;});
   } catch {

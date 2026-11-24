@@ -15,16 +15,18 @@ function database() {
   const sql=new DatabaseSync(':memory:');sql.exec('PRAGMA foreign_keys=ON');
   sql.exec(readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8'));
   sql.exec(readFileSync(new URL('../migrations/0002_management.sql',import.meta.url),'utf8'));
+  sql.exec(readFileSync(new URL('../migrations/0005_family_results.sql',import.meta.url),'utf8'));
+  sql.exec(readFileSync(new URL('../migrations/0006_detailed_wars.sql',import.meta.url),'utf8'));
   const statement=(query,args=[])=>({bind(...values){return statement(query,values);},async first(){return sql.prepare(query).get(...args)||null;},async all(){return {results:sql.prepare(query).all(...args)};},async run(){const r=sql.prepare(query).run(...args);return {meta:{changes:Number(r.changes)}};}});
   return {prepare:q=>statement(q),async batch(statements){for(const s of statements)await s.run();},close:()=>sql.close()};
 }
-function mockFamilyApi() {
+function mockFamilyApi(warState='inWar') {
   const calls=[];
   globalThis.fetch=async(url,options)=>{
     calls.push({url,method:options?.method || 'GET'});
     const tag=decodeURIComponent(new URL(url).pathname.split('/')[3]);
     if(url.endsWith('/currentwar/leaguegroup'))return Response.json({},{status:404});
-    if(url.endsWith('/currentwar'))return Response.json({state:'inWar',startTime:'20261118T120000.000Z',endTime:'20261119T120000.000Z',teamSize:1,
+    if(url.endsWith('/currentwar'))return Response.json({state:warState,startTime:warState==='warEnded'?'20261116T120000.000Z':'20261118T120000.000Z',endTime:warState==='warEnded'?'20261117T140000.000Z':'20261119T120000.000Z',teamSize:1,
       clan:{tag,name:findClan(tag)?.name,stars:3,destructionPercentage:100,members:[{tag:tag+'A',name:'Guerreiro '+tag,mapPosition:1,attacks:[{stars:3,destructionPercentage:100}]}]},
       opponent:{tag:'#ENEMY',name:'Oponente',stars:2,destructionPercentage:80,members:[]}});
     if(url.endsWith('/warlog'))return Response.json({items:[{result:'win',endTime:'20261117T120000.000Z',clan:{tag,stars:3},opponent:{tag:'#ENEMY',stars:2}}]});
@@ -53,6 +55,22 @@ test('dois clãs mantêm guerra, membros e histórico separados',async()=>{
   assert.equal(one.current.war.clan.tag,a);assert.equal(two.wars[0].clan.tag,b);
   assert.equal(one.extras.warLog.items[0].clan.tag,a);assert.equal(two.extras.warLog.items[0].clan.tag,b);
   assert.ok(!JSON.stringify(one).includes('Guerreiro '+b));DB.close();
+});
+test('comparativo anual registra resultados disponíveis de clãs diferentes sem misturar dados',async()=>{
+  const DB=database();mockFamilyApi();await familyDashboard(env(DB),a,now);await familyDashboard(env(DB),b,now);
+  const response=await route(new Request('https://worker.test/api/family-results'),env(DB));
+  assert.equal(response.status,200);const payload=await response.json();
+  assert.equal(payload.clans.length,2);
+  assert.deepEqual(payload.clans.map(c=>c.tag).sort(),[a,b].sort());
+  assert.ok(payload.clans.every(c=>c.wins===1 && c.wars===1 && c.scoreStars===3 && c.detailedWars===0));
+  DB.close();
+});
+test('coleta de outro clã guarda ataques encerrados para consulta por período',async()=>{
+  const DB=database();mockFamilyApi('warEnded');await familyDashboard(env(DB),a,now);
+  const response=await route(new Request('https://worker.test/api/detailed-ranking?clan='+encodeURIComponent(a)+'&from=2026-11-17&to=2026-11-17'),env(DB));
+  assert.equal(response.status,200);const result=await response.json();
+  assert.equal(result.wars,1);assert.equal(result.players[0].stars,3);
+  assert.equal(result.players[0].name,'Guerreiro '+a);DB.close();
 });
 test('novos clãs não alteram dados nem fila de notificações do clã original',async()=>{
   const DB=database();const primary={clan:{tag:DEFAULT_CLAN},capturedAt:1};await stateStatement(DB,'current',primary).run();const calls=mockFamilyApi();

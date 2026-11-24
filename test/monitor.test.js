@@ -17,6 +17,8 @@ function database() {
   const sql=new DatabaseSync(':memory:');sql.exec('PRAGMA foreign_keys=ON');
   sql.exec(readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8'));
   sql.exec(readFileSync(new URL('../migrations/0002_management.sql',import.meta.url),'utf8'));
+  sql.exec(readFileSync(new URL('../migrations/0005_family_results.sql',import.meta.url),'utf8'));
+  sql.exec(readFileSync(new URL('../migrations/0006_detailed_wars.sql',import.meta.url),'utf8'));
   function stmt(query,args=[]) {
     return {bind(...values){return stmt(query,values);},async first(){return sql.prepare(query).get(...args) || null;},async all(){return {results:sql.prepare(query).all(...args)};},async run(){const r=sql.prepare(query).run(...args);return {meta:{changes:Number(r.changes)}};}};
   }
@@ -66,6 +68,19 @@ test('sincronização grava referência e eventos sem duplicar no D1',async()=>{
   assert.equal((await synchronize(env,now+600000)).events,0);
   assert.equal((await DB.prepare('SELECT COUNT(*) AS n FROM events').first()).n,1);
   assert.equal((await readState(DB,'current')).clan.memberList.length,3);
+  DB.close();
+});
+test('coleta principal guarda resultado encerrado para o comparativo anual',async()=>{
+  const DB=database();mockApi(clan,()=>war('warEnded'));
+  const env={DB,CLAN_TAG:tag,CLASH_API_TOKEN:'test'};
+  assert.equal((await synchronize(env,now+86400000)).ok,true);
+  const response=await route(new Request('https://api.test/api/family-results'),env);
+  assert.equal(response.status,200);
+  const result=await response.json();
+  assert.equal(result.clans.find(c=>c.tag===tag)?.wins,1);
+  const ranking=await route(new Request('https://api.test/api/detailed-ranking?clan='+encodeURIComponent(tag)),env);
+  assert.equal(ranking.status,200);
+  assert.equal((await ranking.json()).wars,1);
   DB.close();
 });
 test('API indisponível mantém última coleta e registra código sem segredo',async()=>{

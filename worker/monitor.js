@@ -1,4 +1,6 @@
 import { detectEvents, gameTime, orientWar, warId } from './events.js';
+import { recordWarResults } from './results.js';
+import { recordDetailedWars } from './detailed-wars.js';
 
 export async function clash(env, path) {
   const base = env.CLASH_API_BASE || 'https://cocproxy.royaleapi.dev/v1';
@@ -155,7 +157,14 @@ export async function synchronize(env, now = Date.now()) {
     try {
       const extras = await loadExtras(env,now,await readState(env.DB,'extras'));
       await stateStatement(env.DB,'extras',extras).run();
+      try { await recordWarResults(env.DB,env.CLAN_TAG,[...observedWars,...(extras?.attemptedAt===now ? extras?.warLog?.items || [] : [])],now); } catch { /* O comparativo não interrompe a coleta. */ }
     } catch { /* A coleta principal já foi persistida. */ }
+    try {
+      const backfilled=await readState(env.DB,'detail_backfill_primary');
+      const previousWars=backfilled ? [] : (await env.DB.prepare('SELECT payload FROM wars WHERE end_at>=? ORDER BY end_at DESC LIMIT 250').bind(now-270*86400000).all()).results.map(row=>JSON.parse(row.payload));
+      await recordDetailedWars(env.DB,env.CLAN_TAG,[...previousWars,...observedWars],now);
+      if(!backfilled)await stateStatement(env.DB,'detail_backfill_primary',true).run();
+    } catch { /* O histórico detalhado não interrompe a coleta. */ }
     return { ok: true, warning, events:detected.length };
   } catch (e) {
     const code=/^(api_[a-z0-9_]+|invalid_clan_response)$/.test(e.message) ? e.message : 'sync_failed';
