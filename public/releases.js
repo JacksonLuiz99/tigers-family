@@ -1,6 +1,16 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.24.6",
+    "recordedAt": "2026-11-24T16:48:56.000Z",
+    "title": "Liga dos clãs em uma tela",
+    "changes": [
+      "Em Família, acompanhe os 16 clãs em Liga dos clãs Tigers: veja temporada, rodada, adversário, placar e situação da coleta.",
+      "Abra as rodadas de um clã para consultar os confrontos acompanhados; use o filtro para destacar guerras em andamento ou dados indisponíveis."
+    ],
+    "section": "family"
+  },
+  {
     "version": "2026.11.24.5",
     "recordedAt": "2026-11-24T16:41:08.000Z",
     "title": "Resultados antigos no comparativo",

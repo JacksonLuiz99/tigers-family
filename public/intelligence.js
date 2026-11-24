@@ -26,12 +26,34 @@ export function familyTotals(clans,now=Date.now()) {
   return {fresh:fresh.length,members:fresh.reduce((n,c)=>n+(c.members || 0),0),vacancies:fresh.reduce((n,c)=>n+Math.max(0,50-(c.members || 0)),0),wars:wars.length,pending:wars.reduce((n,c)=>n+(c.war.pending || 0),0)};
 }
 
+export function familyLeagueView(clan,now=Date.now()) {
+  const season=clan?.leagueSeason;const rounds=season?.rounds || [];
+  const month=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Cuiaba',year:'numeric',month:'2-digit'}).format(now).slice(0,7);
+  const recent=clan?.capturedAt && clan?.warCapturedAt && clan.capturedAt<=now+60000 && clan.warCapturedAt<=now+60000 && now-clan.capturedAt<=30*60000 && now-clan.warCapturedAt<=30*60000;
+  const active=season?.season===month && clan?.war?.kind==='cwl' && ['inWar','preparation'].includes(clan.war.state) ? rounds.find(r=>r.round===clan.war.round && r.state===clan.war.state) : null;
+  const shown=active || rounds.at(-1) || null;
+  const limited=clan?.health==='api_http_403' || clan?.health==='cwl_partial' || (clan?.health && clan.health!=='ok') || !recent;
+  const status=clan?.health==='api_http_403'?'GUERRA PRIVADA':clan?.health==='cwl_partial'?'LIGA PARCIAL':!recent || clan?.health!=='ok'?'DADOS ANTIGOS':
+    active?.state==='inWar'?'EM GUERRA':active?.state==='preparation'?'PREPARAÇÃO':season?.season===month && shown?.state==='warEnded'?'RODADA ENCERRADA':shown?'ÚLTIMA LIGA OBSERVADA':'SEM RODADAS CONFIRMADAS';
+  return {season:season?.season || null,rounds,shown,status,limited:Boolean(limited),active:Boolean(active && !limited)};
+}
+
 export function initIntelligence({getData,switchClan,escape:esc,num,date,apiBase}) {
   const $=id=>document.getElementById(id);
   const empty=text=>`<p class="empty">${esc(text)}</p>`;
   const table=(headers,rows)=>`<div class="table-wrap"><table class="responsive-table"><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(cells=>`<tr>${cells.map((c,i)=>`<td data-label="${esc(headers[i])}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   const metric=(label,value)=>`<article><span>${esc(label)}</span><strong>${esc(value)}</strong></article>`;
-  let familyBusy=false;let lastFamily=0;let familyResults=[];let familyNames=new Map();
+  let familyBusy=false;let lastFamily=0;let familyResults=[];let familyNames=new Map();let familyClans=[];
+  function renderFamilyLeague() {
+    const now=Date.now();const filter=$('family-league-filter').value;
+    const rows=familyClans.map(c=>({clan:c,view:familyLeagueView(c,now)})).filter(({view})=>filter==='all' || (filter==='active'?view.active:view.limited));
+    $('family-league-note').textContent=`${rows.length} de ${familyClans.length} clãs exibidos. Rodadas e placares vêm das guerras efetivamente acompanhadas; a consulta da Liga pode ser parcial. Coletas antigas ou guerra privada não confirmam a situação atual. Horários em Cuiabá.`;
+    $('family-league-table').innerHTML=rows.length?table(['Clã','Temporada','Rodada','Adversário','Placar','Situação dos dados','Coleta'],rows.map(({clan:c,view:v})=>[
+      `<button class="text-button" data-observe="${esc(c.tag)}">${esc(c.label)}</button>`,esc(v.season || '—'),
+      v.shown?`<span>${num(v.shown.round)}</span><details class="league-round-list"><summary>Ver ${v.rounds.length} rodada${v.rounds.length===1?'':'s'}</summary><ul>${v.rounds.map(r=>`<li>Rodada ${num(r.round)} · ${esc(r.opponent)} · ${r.stars==null?'—':num(r.stars)} × ${r.enemyStars==null?'—':num(r.enemyStars)} ★ · ${esc(r.result || ({inWar:'Em guerra',preparation:'Preparação'})[r.state] || 'Aguardando')}</li>`).join('')}</ul></details>`:'—',
+      esc(v.shown?.opponent || '—'),v.shown?.stars!=null && v.shown?.enemyStars!=null?`${num(v.shown.stars)} × ${num(v.shown.enemyStars)} ★`:'—',esc(v.status),c.warCapturedAt?date(c.warCapturedAt):'—'
+    ])):empty('Nenhum clã corresponde a este filtro.');
+  }
   function renderFamilyResults() {
     const sort=$('family-results-sort').value;
     const rows=[...familyResults].sort((a,b)=>{
@@ -60,19 +82,21 @@ export function initIntelligence({getData,switchClan,escape:esc,num,date,apiBase
     familyBusy=true;$('family-refresh').disabled=true;
     try {
       const response=await fetch(`${apiBase()}/api/family`,{signal:AbortSignal.timeout(20000)});if(!response.ok)throw new Error();
-      const payload=await response.json();dispatchEvent(new CustomEvent('tow:family',{detail:payload}));familyNames=new Map(payload.clans.map(c=>[c.tag,c.label]));const now=Date.now();const totals=familyTotals(payload.clans,now);
+      const payload=await response.json();dispatchEvent(new CustomEvent('tow:family',{detail:payload}));familyClans=payload.clans;familyNames=new Map(payload.clans.map(c=>[c.tag,c.label]));const now=Date.now();const totals=familyTotals(payload.clans,now);
       $('family-metrics').innerHTML=metric('Membros · coletas recentes',num(totals.members))+metric('Vagas · coletas recentes',num(totals.vacancies))+metric('Guerras em andamento',num(totals.wars))+metric('Ataques pendentes',num(totals.pending));
       $('family-note').textContent=`${totals.fresh}/${payload.clans.length} clãs com coleta nos últimos 30 min. Ciclo automático de aproximadamente 15 min; TOW 4 a cada 5 min. Totais excluem coletas antigas. Guerras privadas podem não estar disponíveis.`;
       $('family-grid').innerHTML=payload.clans.map(c=>{
         const stale=!c.capturedAt || now-c.capturedAt>30*60000;const warFresh=c.warCapturedAt && now-c.warCapturedAt<=30*60000;
         const state=stale?'COLETA PENDENTE':!warFresh?'GUERRA INDISPONÍVEL':({inWar:'EM GUERRA',preparation:'PREPARAÇÃO',warEnded:'ENCERRADA'})[c.war?.state] || 'SEM GUERRA ATIVA';
         return `<article class="panel family-card"><div class="panel-head"><h3>${esc(c.label)}</h3><span class="tag ${!stale && warFresh && c.war?.state==='inWar'?'good':''}">${esc(state)}</span></div><p>${esc(c.name)}</p><span>${esc(c.tag)}</span><dl><div><dt>Tropa</dt><dd>${num(c.members)}/50</dd></div><div><dt>Liga</dt><dd>${esc(c.league || '—')}</dd></div><div><dt>Troféus</dt><dd>${num(c.trophies)}</dd></div></dl>${c.war && warFresh?`<p>Contra ${esc(c.war.opponent)} · ${num(c.war.stars)} × ${num(c.war.enemyStars)} ★${c.war.state==='inWar'?` · ${num(c.war.pending)} ataques pendentes`:''}</p>`:''}<p class="coverage">${c.capturedAt?`Coleta: ${date(c.capturedAt)}`:'Aguardando primeira coleta automática.'}</p><button class="outline-button" data-observe="${esc(c.tag)}">Observar ${esc(c.label)}</button></article>`;
-      }).join('');lastFamily=now;await refreshFamilyResults();
+      }).join('');renderFamilyLeague();lastFamily=now;await refreshFamilyResults();
     } catch {dispatchEvent(new CustomEvent('tow:family-error'));$('family-note').textContent='A visão da família está temporariamente indisponível. Tente atualizar novamente.';}
     finally {familyBusy=false;$('family-refresh').disabled=false;}
   }
   $('family-refresh').addEventListener('click',()=>refreshFamily(true));
   $('family-results-sort').addEventListener('change',renderFamilyResults);
+  $('family-league-filter').addEventListener('change',renderFamilyLeague);
+  $('family-league-table').addEventListener('click',e=>{const b=e.target.closest('[data-observe]');if(b)switchClan(b.dataset.observe);});
   $('family-grid').addEventListener('click',e=>{const b=e.target.closest('[data-observe]');if(b)switchClan(b.dataset.observe);});
   function renderAnalysis() {
     const data=getData();const days=Number($('analysis-period').value);const now=Date.now();

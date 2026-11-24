@@ -2,7 +2,7 @@ import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import { familyDashboard, scheduledClan, synchronizeFamily, familyOverview, dailyTimeline, clanSummary, recordPrimarySummary } from '../worker/family.js';
+import { familyDashboard, scheduledClan, synchronizeFamily, familyOverview, dailyTimeline, clanSummary, recordPrimarySummary, leagueSnapshot } from '../worker/family.js';
 import { readState, stateStatement } from '../worker/monitor.js';
 import { route } from '../worker/index.js';
 import { CLANS, DEFAULT_CLAN, preferredClan, findClan } from '../public/clans.js';
@@ -11,6 +11,13 @@ const originalFetch = globalThis.fetch;
 afterEach(()=>{globalThis.fetch=originalFetch;});
 const now = Date.parse('2026-11-18T16:00:00Z');
 const a = '#29P0V8VCG';const b = '#28L88PQ2';
+test('resumo da Liga escolhe a temporada mais recente e conserva rodadas observadas',()=>{
+  const base={kind:'cwl',season:'2026-11',round:2,state:'inWar',endTime:'20261119T120000.000Z',clan:{tag:a,stars:20,destructionPercentage:70},opponent:{tag:'#OPP',name:'Rival',stars:18,destructionPercentage:60}};
+  const ended={...base,state:'warEnded',clan:{...base.clan,stars:30},opponent:{...base.opponent,stars:25}};
+  const snapshot=leagueSnapshot(a,[{...base,season:'2026-10'},base,ended,{...base,clan:{tag:b}}]);
+  assert.equal(snapshot.season,'2026-11');assert.equal(snapshot.rounds.length,1);
+  assert.deepEqual(snapshot.rounds[0],{round:2,state:'warEnded',opponent:'Rival',stars:30,enemyStars:25,endAt:Date.parse('2026-11-19T12:00:00Z'),result:'Vitória'});
+});
 function database() {
   const sql=new DatabaseSync(':memory:');sql.exec('PRAGMA foreign_keys=ON');
   sql.exec(readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8'));

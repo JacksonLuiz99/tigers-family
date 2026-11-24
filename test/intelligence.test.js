@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { periodWars, fairPerformance, raidParticipation, familyTotals } from '../public/intelligence.js';
+import { periodWars, fairPerformance, raidParticipation, familyTotals, familyLeagueView } from '../public/intelligence.js';
 const now=Date.parse('2026-11-19T12:00:00Z');
 const war={state:'warEnded',endTime:'20261118T120000.000Z',startTime:'20261117T120000.000Z',opponent:{tag:'#O',members:[{tag:'#A',townhallLevel:19},{tag:'#B',townhallLevel:18}]},clan:{tag:'#C',members:[{tag:'#P',name:'Ana',townhallLevel:18,attacks:[{defenderTag:'#A',stars:2,destructionPercentage:80},{defenderTag:'#B',stars:3,destructionPercentage:100}]}]}};
 test('recortes excluem guerras abertas, antigas e futuras',()=>{
@@ -26,4 +26,12 @@ test('Capital distingue ausência de registro de participação com zero ataques
 test('totais excluem clãs antigos e guerras sem atualização recente',()=>{
   const stats=familyTotals([{members:40,capturedAt:now,warCapturedAt:now,war:{state:'inWar',pending:5}},{members:50,capturedAt:now-31*60000,war:{state:'inWar',pending:30}},{members:48,capturedAt:now,warCapturedAt:now-40*60000,war:{state:'inWar',pending:9}}],now);
   assert.deepEqual(stats,{fresh:2,members:88,vacancies:12,wars:1,pending:5});
+});
+test('visão da Liga não trata guerra privada ou dados antigos como confronto ativo',()=>{
+  const round={round:2,state:'inWar',opponent:'Rival',stars:15,enemyStars:12};
+  const clan={capturedAt:now,warCapturedAt:now,health:'ok',war:{kind:'cwl',season:'2026-11',round:2,state:'inWar'},leagueSeason:{season:'2026-11',rounds:[round]}};
+  assert.equal(familyLeagueView(clan,now).status,'EM GUERRA');
+  assert.equal(familyLeagueView({...clan,health:'api_http_403'},now).status,'GUERRA PRIVADA');
+  assert.equal(familyLeagueView({...clan,warCapturedAt:now-31*60000},now).status,'DADOS ANTIGOS');
+  assert.equal(familyLeagueView({...clan,war:{kind:'regular',state:'inWar'}},now).active,false);
 });

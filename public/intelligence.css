@@ -2,3 +2,4 @@
 @media(max-width:1100px){.family-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:650px){.family-grid{grid-template-columns:1fr}.intelligence-dialog .history-metrics{grid-template-columns:1fr}.intelligence-dialog header{padding:14px}.intelligence-dialog .profile-content{padding:14px}.intelligence .filters{display:grid;grid-template-columns:1fr}.intelligence .section-heading{align-items:flex-start}.intelligence-dialog h2{font-size:1.6rem}}
 
 .intelligence .history-metrics article>span,.intelligence .family-card .tag{font-size:.875rem;line-height:1.4}.intelligence .history-metrics article>span{letter-spacing:.02em}
+.league-round-list{margin-top:6px;min-width:0}.league-round-list summary{cursor:pointer;color:var(--orange);font-size:.875rem}.league-round-list ul{padding-left:18px;margin:8px 0;min-width:230px}.league-round-list li{margin:5px 0;line-height:1.45;white-space:normal}

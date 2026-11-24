@@ -2,7 +2,7 @@ import { recordRoster } from './management.js';
 import { clash, readState, stateStatement, loadWar, loadExtras } from './monitor.js';
 import { detectEvents, warId, gameTime } from './events.js';
 import { findClan, CLANS } from '../public/clans.js';
-import { publicLinks } from '../public/stats.js';
+import { publicLinks, outcome } from '../public/stats.js';
 import { recordWarResults, backfillAnnualResults } from './results.js';
 import { recordDetailedWars } from './detailed-wars.js';
 
@@ -90,6 +90,21 @@ export function dailyTimeline(previous = [], clan, now) {
     donations:(clan.memberList || []).reduce((n,m)=>n+(m.donations || 0),0)};
   return [...previous.filter(p=>p.day!==day && p.capturedAt>=now-31*86400000),point].slice(-32);
 }
+export function leagueSnapshot(tag,wars=[],currentWar=null) {
+  const candidates=[...wars,currentWar].filter(w=>w?.kind==='cwl' && w.clan?.tag===tag && /^\d{4}-\d{2}$/.test(w.season || '') &&
+    Number.isInteger(w.round) && w.round>=1 && w.round<=7 && w.opponent?.name);
+  if(!candidates.length)return null;
+  const season=candidates.reduce((latest,w)=>w.season>latest?w.season:latest,'');
+  const byRound=new Map();
+  for(const war of candidates.filter(w=>w.season===season)) {
+    const old=byRound.get(war.round);
+    if(!old || (old.state!=='warEnded' && war.state==='warEnded') || (old.state===war.state && gameTime(war.endTime)>gameTime(old.endTime)))byRound.set(war.round,war);
+  }
+  const rounds=[...byRound.values()].sort((a,b)=>a.round-b.round).map(w=>({round:w.round,state:w.state,opponent:w.opponent.name,
+    stars:Number.isInteger(w.clan.stars)?w.clan.stars:null,enemyStars:Number.isInteger(w.opponent.stars)?w.opponent.stars:null,
+    endAt:gameTime(w.endTime),result:w.state==='warEnded'?outcome(w):null}));
+  return {season,rounds};
+}
 export function clanSummary(tag,saved) {
   const clan=saved?.current?.clan;const war=saved?.current?.war;
   const limit=war?.attacksPerMember ?? (war?.kind==='cwl'?1:2);
@@ -97,8 +112,8 @@ export function clanSummary(tag,saved) {
     level:clan?.clanLevel,requiredTH:clan?.requiredTownhallLevel,requiredTrophies:clan?.requiredTrophies,requiredLeague:clan?.requiredLeagueTier?.name,type:clan?.type,description:clan?.description,capitalLevel:clan?.clanCapital?.capitalHallLevel,capitalPoints:clan?.clanCapitalPoints,capitalLeague:clan?.capitalLeague?.name,
     donations:clan?.memberList?.reduce((n,m)=>n+(m.donations || 0),0),townHalls:(clan?.memberList || []).reduce((counts,m)=>{const th=m.townHallLevel || 0;counts[th]=(counts[th] || 0)+1;return counts;},{}),
     trophies:clan?.clanPoints,capturedAt:saved?.current?.capturedAt || null,health:saved?.health?.code || 'awaiting_first_sync',lastAttempt:saved?.health?.lastAttempt || null,
-    warCapturedAt:saved?.current?.warCapturedAt || null,
-    war:war ? {state:war.state,kind:war.kind,opponent:war.opponent?.name,stars:war.clan?.stars,enemyStars:war.opponent?.stars,
+    warCapturedAt:saved?.current?.warCapturedAt || null,leagueSeason:leagueSnapshot(tag,saved?.wars || [],war),
+    war:war ? {state:war.state,kind:war.kind,season:war.season,round:war.round,opponent:war.opponent?.name,stars:war.clan?.stars,enemyStars:war.opponent?.stars,
       endAt:gameTime(war.endTime),pending:war.state==='inWar'?(war.clan?.members || []).reduce((n,m)=>n+Math.max(0,limit-(m.attacks?.length || 0)),0):0}:null};
 }
 export function scheduledClan(now,primary) {
@@ -110,12 +125,12 @@ export async function synchronizeFamily(env,now=Date.now()) {
   return familyDashboard(env,tag,now);
 }
 export async function recordPrimarySummary(env,now=Date.now()) {
-  const [current,health,timeline]=await Promise.all([readState(env.DB,'current'),readState(env.DB,'health'),readState(env.DB,'timeline')]);
+  const [current,health,timeline,rows]=await Promise.all([readState(env.DB,'current'),readState(env.DB,'health'),readState(env.DB,'timeline'),env.DB.prepare('SELECT payload FROM wars ORDER BY end_at DESC LIMIT 20').all()]);
   if(!current?.clan)return;
   const tag=current.clan.tag;
   const next=dailyTimeline(timeline || [],current.clan,current.capturedAt);
   await recordRoster(env,current.clan,current.capturedAt);
-  await env.DB.batch([stateStatement(env.DB,`summary:${tag}`,clanSummary(tag,{current,health})),stateStatement(env.DB,'timeline',next)]);
+  await env.DB.batch([stateStatement(env.DB,`summary:${tag}`,clanSummary(tag,{current,health,wars:rows.results.map(row=>JSON.parse(row.payload))})),stateStatement(env.DB,'timeline',next)]);
 }
 // Procura uma tag nos registros já coletados de todos os clãs. Só lê o banco; não consulta a API do jogo.
 const PLAYER_TAG=/^#[0289PYLQGRJCUV]{3,15}$/;
