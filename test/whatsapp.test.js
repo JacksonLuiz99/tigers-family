@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pendingMessage, whatsappUrl, messageName } from '../public/whatsapp.js';
+import { pendingMessage, individualMessage, whatsappUrl, messageName } from '../public/whatsapp.js';
 const now=Date.parse('2026-11-19T12:00:00Z');const tag='#R0UPVVVY';
 function payload(){return {configured:true,clanTag:tag,health:{code:'ok'},current:{capturedAt:now,warCapturedAt:now,clan:{tag,name:'TIGERS OF WAR 4'},war:{state:'inWar',kind:'regular',teamSize:3,endTime:'20261119T133000.000Z',clan:{tag,stars:3,members:[{tag:'#98Q9LLG2P',name:'Ana',mapPosition:2,attacks:[{stars:3}]},{tag:'#QC9RY8GJ',name:'João 🐯',mapPosition:1},{tag:'#28L88PQ2',name:'Beto',mapPosition:3,attacks:[{stars:0},{stars:0}]}]},opponent:{tag:'#202YP22U9',name:'Adversário',stars:2}}}};}
 test('mensagem lista os ataques primeiro, ordena por posição e mostra coleta e prazo em Brasília',()=>{
@@ -40,4 +40,10 @@ test('nomes não injetam quebras de linha ou formatação e Unicode é preservad
 });
 test('link do WhatsApp codifica texto inteiro sem número ou grupo pré-selecionado',()=>{
  const text=pendingMessage(payload(),{now}).text;const url=new URL(whatsappUrl(text));assert.equal(url.origin,'https://wa.me');assert.equal(url.pathname,'/');assert.equal(url.searchParams.get('text'),text);assert.equal(url.searchParams.has('phone'),false);
+});
+test('cobrança individual usa somente pendência confirmada e revalida o prazo',()=>{
+ const message=individualMessage(payload(),'#QC9RY8GJ',{now});
+ assert.equal(message.player.remaining,2);assert.match(message.text,/Oi, João 🐯!/);assert.ok(!message.text.includes('Ana'));
+ assert.throws(()=>individualMessage(payload(),'#28L88PQ2',{now}),/não tem ataque pendente/);
+ assert.throws(()=>individualMessage(payload(),'#QC9RY8GJ',{now:now+11*60000}),/antiga/);
 });

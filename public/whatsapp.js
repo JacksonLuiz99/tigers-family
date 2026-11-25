@@ -40,9 +40,22 @@ export function pendingMessage(payload,{now=Date.now(),includeTags=false}={}) {
     `⏳ Faltam ${remaining} · término ${time(end)} (Brasília)`,
     `📌 Coleta: ${time(current.warCapturedAt)} (Brasília)`
   ].join('\n');
-  return {text,clanTag:known.tag,players:pending.length,attacks:total,endAt:end,capturedAt:current.warCapturedAt,generatedAt:now};
+  return {text,clanTag:known.tag,players:pending.length,pendingList:pending,attacks:total,endAt:end,capturedAt:current.warCapturedAt,generatedAt:now};
 }
 export const whatsappUrl=text=>'https://wa.me/?text='+encodeURIComponent(text);
+export function individualMessage(payload,playerTag,{now=Date.now()}={}) {
+  const summary=pendingMessage(payload,{now});
+  const player=summary.pendingList.find(p=>p.tag===playerTag);
+  if(!player)throw new Error('Este jogador não tem ataque pendente confirmado nesta guerra. Atualize a consulta.');
+  const war=payload.current.war;const remainingMinutes=Math.ceil((summary.endAt-now)/minute);
+  const remaining=`${Math.floor(remainingMinutes/60)}h${String(remainingMinutes%60).padStart(2,'0')}`;
+  const text=[`⚔️ *ATAQUE PENDENTE · ${messageName(payload.current.clan.name)}*`,
+    `Oi, ${player.name}! Você ainda tem ${player.remaining} ataque${player.remaining===1?'':'s'} nesta guerra${war.kind==='cwl'?' de Liga':''}.`,
+    `Adversário: ${messageName(war.opponent?.name || 'não informado')}.`,
+    `⏳ Faltam ${remaining} · término ${time(summary.endAt)} (Brasília).`,
+    `📌 Dados conferidos em ${time(summary.capturedAt)} (Brasília).`].join('\n');
+  return {text,player,endAt:summary.endAt,capturedAt:summary.capturedAt};
+}
 
 export function initWhatsApp({getSelectedClan,apiBase}) {
   const $=id=>document.getElementById(id);const dialog=$('whatsapp-dialog');let payload=null;let controller=null;let sequence=0;let message=null;

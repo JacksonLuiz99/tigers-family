@@ -7,6 +7,7 @@ import { CLANS, DEFAULT_CLAN, findClan } from '../public/clans.js';
 import { familyDashboard, familyOverview, synchronizeFamily, recordPrimarySummary, locatePlayer, isPlayerTag } from './family.js';
 import { familyResults } from './results.js';
 import { detailedRanking } from './detailed-wars.js';
+import { listContacts, saveContact, ContactInputError } from './contacts.js';
 
 const json = (data,status=200,headers={}) => Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 
@@ -35,6 +36,22 @@ export async function route(request,env) {
   if(path.startsWith('/api/push/')){
     try{const result=await pushRoute(request,env,url);return json(result,result.status || 200,headers);}
     catch(error){return json({error:error instanceof PushInputError?error.message:'Não foi possível atualizar as notificações. Tente novamente.'},error instanceof PushInputError?400:503,headers);}
+  }
+  if(path==='/api/leadership-contacts') {
+    if(!['GET','POST'].includes(request.method))return json({error:'method_not_allowed'},405,headers);
+    if(!await authorized(request,env.LEADERSHIP_TOKEN))return json({error:'Chave de liderança inválida.'},401,headers);
+    if(!env.DB)return json({error:'Banco indisponível.'},503,headers);
+    try {
+      if(request.method==='GET')return json(await listContacts(env,url.searchParams.get('clan')),200,headers);
+      if(!(request.headers.get('Content-Type') || '').startsWith('application/json'))return json({error:'Envie um formulário válido.'},415,headers);
+      if(Number(request.headers.get('Content-Length') || 0)>4096)return json({error:'Registro muito grande.'},413,headers);
+      const reader=request.body?.getReader();if(!reader)return json({error:'Corpo obrigatório.'},400,headers);
+      const chunks=[];let size=0;
+      for(;;){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>4096){await reader.cancel();return json({error:'Registro muito grande.'},413,headers);}chunks.push(value);}
+      const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+      let input;try{input=JSON.parse(new TextDecoder().decode(bytes));}catch{return json({error:'Formulário inválido.'},400,headers);}
+      return json(await saveContact(env,input),200,headers);
+    } catch(error){return json({error:error instanceof ContactInputError?error.message:'Não foi possível consultar ou salvar contatos.'},error instanceof ContactInputError?400:503,headers);}
   }
   if (['/api/management','/api/player-evolution','/api/clan-management','/api/leadership','/api/manual-wars','/api/goals'].includes(path)) {
     try {

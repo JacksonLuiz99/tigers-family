@@ -1,6 +1,16 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.24.7",
+    "recordedAt": "2026-11-24T21:09:20.000Z",
+    "title": "Cobrança individual com contato",
+    "changes": [
+      "Na área da liderança, cadastre o telefone de um jogador e consulte quem ainda tem ataque confirmado nesta guerra.",
+      "Se houver contato e ataque pendente, abra uma conversa individual com mensagem pronta. Revise e confirme o envio no WhatsApp."
+    ],
+    "section": "leadership"
+  },
+  {
     "version": "2026.11.24.6",
     "recordedAt": "2026-11-24T16:48:56.000Z",
     "title": "Liga dos clãs em uma tela",

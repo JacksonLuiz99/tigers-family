@@ -1,5 +1,6 @@
 import { CLANS, findClan } from './clans.js';
 import { csvFile } from './exports.js';
+import { pendingMessage, individualMessage } from './whatsapp.js';
 export function possibleTransfers(moves) {
   const matches=move=>moves.filter(other=>other.playerTag===move.playerTag && other.clanTag!==move.clanTag && other.kind!==move.kind && Math.abs(other.detectedAt-move.detectedAt)<=48*3600000);
   return moves.map(move=>{
@@ -29,6 +30,7 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
   const options=(selected='')=>CLANS.map(c=>`<option value="${esc(c.tag)}" ${selected===c.tag?'selected':''}>${esc(c.label)}</option>`).join('');
   const table=(headers,rows)=>`<div class="table-wrap"><table class="responsive-table"><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(cells=>`<tr>${cells.map((cell,i)=>`<td data-label="${esc(headers[i])}">${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   let family=[];let moves=[];let config=null;let clanTag=null;let configVersion=0;let evolutionController=null;let leadershipKey='';let manualId=null;let manualRevision=0;let goalRevision=0;let busy=false;
+  let contacts=new Map();let pendingPayload=null;let contactVersion=0;let pendingController=null;
   async function get(path,signal) {const r=await fetch(apiBase()+path,{signal:signal || AbortSignal.timeout(20000)});if(!r.ok)throw new Error('Consulta indisponível. Tente atualizar.');return r.json();}
   async function post(path,payload) {
     const r=await fetch(apiBase()+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${leadershipKey}`},body:JSON.stringify(payload),signal:AbortSignal.timeout(20000)});
@@ -74,15 +76,70 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
     $('manual-list').innerHTML=wars.length?wars.map(w=>`<details class="manual-record"><summary><span class="tag">REGISTRO MANUAL</span> ${esc(w.opponentName)} · ${w.clanStars} × ${w.opponentStars} ★ · ${date(w.endedAt)}</summary><p>${w.teamSize} × ${w.teamSize} · ${w.kind==='cwl'?'Liga':'Guerra comum'} · Destruição: ${num(w.clanDamage,2)}% × ${num(w.opponentDamage,2)}% · ${esc(w.opponentTag)}</p><p class="coverage">Revisão ${w.revision} · Atualizado em ${date(w.updatedAt)}. Informado pela liderança; não validado pela API. Ataques registrados podem ser parciais.</p>${w.attacks.length?table(['Atacante','Alvo','CV atacante / alvo','Estrelas','Destruição'],w.attacks.map(a=>[esc(a.attackerName),esc(a.targetName),`${a.attackerTH} / ${a.targetTH}`,String(a.stars),`${num(a.damage,2)}%`])):empty('Somente o placar foi registrado.')}<button class="outline-button" data-edit-manual="${esc(w.id)}">Editar com chave de liderança</button></details>`).join(''):empty('Nenhuma guerra manual registrada neste clã.');
     $('manual-download').disabled=!wars.length;
   }
-  function lock() {leadershipKey='';$('leadership-tools').hidden=true;$('leadership-password').value='';$('leadership-auth-state').textContent='Área bloqueada.';}
+  function renderContacts() {
+    const rows=[...contacts.values()].sort((a,b)=>a.playerTag.localeCompare(b.playerTag));
+    $('contact-list').innerHTML=rows.length?table(['Jogador','Telefone','Ações'],rows.map(c=>[esc(c.playerTag),`•••• ${esc(c.phone.slice(-4))}`,`<button type="button" class="text-button" data-edit-contact="${esc(c.playerTag)}">Editar</button> <button type="button" class="text-button" data-remove-contact="${esc(c.playerTag)}">Excluir</button>`])):empty('Nenhum telefone cadastrado neste clã.');
+  }
+  function renderPendingContacts() {
+    if(!pendingPayload){$('contact-pending-list').replaceChildren();return;}
+    try {
+      const pending=pendingMessage(pendingPayload).pendingList;
+      $('contact-pending-list').innerHTML=table(['Guerreiro','Ataques pendentes','Contato'],pending.map(p=>{
+        const phone=contacts.get(p.tag)?.phone;
+        const link=phone?`<a class="outline-button" data-contact-player="${esc(p.tag)}" target="_blank" rel="noopener noreferrer" href="https://wa.me/${phone}?text=${encodeURIComponent(individualMessage(pendingPayload,p.tag).text)}">Abrir conversa</a>`:'Cadastre o telefone para abrir a conversa';
+        return [`${esc(p.name)} <small>${esc(p.tag)}</small>`,num(p.remaining),link];
+      }));
+      $('contact-pending-status').textContent=`${pending.length} guerreiro${pending.length===1?'':'s'} com ataque pendente confirmado. Coleta: ${date(pendingPayload.current.warCapturedAt)}. Revise a mensagem e confirme o envio no WhatsApp.`;
+    } catch(error){pendingPayload=null;$('contact-pending-list').replaceChildren();$('contact-pending-status').textContent=error.message;}
+  }
+  async function loadContacts() {
+    const tag=getData()?.clanTag;const key=leadershipKey;const version=++contactVersion;
+    if(!tag || !key)return;
+    try {
+      const response=await fetch(`${apiBase()}/api/leadership-contacts?clan=${encodeURIComponent(tag)}`,{headers:{Authorization:`Bearer ${key}`},signal:AbortSignal.timeout(20000)});
+      if(response.status===401){if(version===contactVersion)lock();throw new Error('Área bloqueada. Informe a chave novamente.');}
+      if(!response.ok)throw new Error('Não foi possível consultar os contatos.');
+      const payload=await response.json();if(version!==contactVersion || leadershipKey!==key || getData()?.clanTag!==tag)return;
+      contacts=new Map(payload.contacts.map(c=>[c.playerTag,c]));renderContacts();renderPendingContacts();$('contact-status').textContent=`${contacts.size} contato${contacts.size===1?'':'s'} cadastrado${contacts.size===1?'':'s'} neste clã.`;
+    } catch(error){if(version===contactVersion && leadershipKey) $('contact-status').textContent=error.message;}
+  }
+  async function refreshPendingContacts() {
+    pendingController?.abort();const controller=new AbortController();pendingController=controller;
+    const tag=getData()?.clanTag;const key=leadershipKey;pendingPayload=null;$('contact-pending-list').replaceChildren();$('contact-pending-status').textContent='Consultando ataques pendentes…';
+    if(!tag || !key)return;
+    try {
+      const response=await fetch(`${apiBase()}/api/dashboard?clan=${encodeURIComponent(tag)}`,{signal:controller.signal});if(!response.ok)throw new Error('Não foi possível consultar a guerra.');
+      const payload=await response.json();if(controller!==pendingController || leadershipKey!==key || getData()?.clanTag!==tag)return;
+      if(payload.clanTag!==tag)throw new Error('A resposta não corresponde ao clã selecionado.');
+      pendingMessage(payload);pendingPayload=payload;renderPendingContacts();
+    } catch(error){if(controller===pendingController && !controller.signal.aborted)$('contact-pending-status').textContent=error.message;}
+  }
+  function lock() {leadershipKey='';contacts.clear();pendingPayload=null;contactVersion++;pendingController?.abort();pendingController=null;$('contact-form').reset();$('contact-list').replaceChildren();$('contact-pending-list').replaceChildren();$('contact-status').textContent='';$('contact-pending-status').textContent='';$('leadership-tools').hidden=true;$('leadership-password').value='';$('leadership-auth-state').textContent='Área bloqueada.';}
   $('leadership-open').addEventListener('click',()=>{$('leadership-dialog').showModal();$('leadership-error').textContent='';});
   $('leadership-close').addEventListener('click',()=>{lock();$('leadership-dialog').close();});
   $('leadership-dialog').addEventListener('cancel',lock);
   $('leadership-dialog').addEventListener('close',lock);
   $('leadership-lock').addEventListener('click',lock);
   $('leadership-login').addEventListener('submit',async e=>{e.preventDefault();const button=$('leadership-unlock');button.disabled=true;leadershipKey=$('leadership-password').value.trim();$('leadership-password').value='';
-    try {await post('/api/leadership',{});$('leadership-tools').hidden=false;$('leadership-auth-state').textContent=`Liberado para ${label(getData()?.clanTag)} nesta janela. Fechar bloqueia novamente.`;$('leadership-error').textContent='';fillGoals();}
+    try {await post('/api/leadership',{});$('leadership-tools').hidden=false;$('leadership-auth-state').textContent=`Liberado para ${label(getData()?.clanTag)} nesta janela. Fechar bloqueia novamente.`;$('leadership-error').textContent='';fillGoals();loadContacts();}
     catch(error){lock();$('leadership-error').textContent=error.message;}finally{button.disabled=false;}
+  });
+  $('contact-form').addEventListener('submit',async e=>{e.preventDefault();if(!leadershipKey)return;
+    const tag=getData()?.clanTag;const playerTag=$('contact-player').value.trim().toUpperCase();const phone=$('contact-phone').value.trim();$('contact-save').disabled=true;
+    try {await post('/api/leadership-contacts',{clanTag:tag,playerTag,phone});if(getData()?.clanTag===tag && leadershipKey){$('contact-form').reset();await loadContacts();$('contact-status').textContent='Contato salvo neste clã.';}}
+    catch(error){$('contact-status').textContent=error.message;}finally{$('contact-save').disabled=false;}
+  });
+  $('contact-list').addEventListener('click',async e=>{
+    const edit=e.target.closest('[data-edit-contact]');if(edit){const c=contacts.get(edit.dataset.editContact);if(c){$('contact-player').value=c.playerTag;$('contact-phone').value='+'+c.phone;$('contact-phone').focus();}return;}
+    const remove=e.target.closest('[data-remove-contact]');if(!remove || !leadershipKey)return;
+    const tag=getData()?.clanTag;remove.disabled=true;
+    try {await post('/api/leadership-contacts',{clanTag:tag,playerTag:remove.dataset.removeContact,phone:null});if(getData()?.clanTag===tag && leadershipKey){await loadContacts();$('contact-status').textContent='Contato excluído deste clã.';}}
+    catch(error){$('contact-status').textContent=error.message;}finally{remove.disabled=false;}
+  });
+  $('contact-refresh-pending').addEventListener('click',refreshPendingContacts);
+  $('contact-pending-list').addEventListener('click',e=>{const link=e.target.closest('[data-contact-player]');if(!link)return;
+    try {const contact=contacts.get(link.dataset.contactPlayer);if(!leadershipKey || !contact || !pendingPayload)throw new Error('Atualize a consulta antes de abrir a conversa.');const message=individualMessage(pendingPayload,link.dataset.contactPlayer);link.href=`https://wa.me/${contact.phone}?text=${encodeURIComponent(message.text)}`;}
+    catch(error){e.preventDefault();$('contact-pending-status').textContent=error.message;}
   });
   function fillGoals() {
     const goals=config?.goals;goalRevision=goals?.revision || 0;const today=new Date().toISOString().slice(0,10);
