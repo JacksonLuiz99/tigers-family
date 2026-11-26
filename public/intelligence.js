@@ -1,4 +1,5 @@
 import { performance, parseGameTime, outcome } from './stats.js';
+import { createFamilyDownload } from './family-export.js';
 
 export function periodWars(wars=[],days=30,now=Date.now()) {
   return wars.filter(w=>w?.state==='warEnded' && parseGameTime(w.endTime)>=now-days*86400000 && parseGameTime(w.endTime)<=now);
@@ -94,6 +95,21 @@ export function initIntelligence({getData,switchClan,escape:esc,num,date,apiBase
     finally {familyBusy=false;$('family-refresh').disabled=false;}
   }
   $('family-refresh').addEventListener('click',()=>refreshFamily(true));
+  $('family-download').addEventListener('click',async()=>{
+    const button=$('family-download');button.disabled=true;$('family-download-status').textContent='Preparando a planilha da família…';
+    try{
+      const [familyResponse,resultsResponse]=await Promise.all([
+        fetch(`${apiBase()}/api/family`,{signal:AbortSignal.timeout(20000)}),
+        fetch(`${apiBase()}/api/family-results`,{signal:AbortSignal.timeout(20000)})
+      ]);
+      if(!familyResponse.ok || !resultsResponse.ok)throw new Error('Não foi possível consultar todos os dados. Tente novamente.');
+      const [family,results]=await Promise.all([familyResponse.json(),resultsResponse.json()]);
+      const file=createFamilyDownload(family,results);const url=URL.createObjectURL(new Blob([file.content],{type:file.mime}));
+      const link=document.createElement('a');link.href=url;link.download=file.filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+      $('family-download-status').textContent=`Planilha preparada com ${file.rows} linhas de dados dos clãs acompanhados.`;
+    }catch(error){$('family-download-status').textContent=error.message;}
+    finally{button.disabled=false;}
+  });
   $('family-results-sort').addEventListener('change',renderFamilyResults);
   $('family-league-filter').addEventListener('change',renderFamilyLeague);
   $('family-league-table').addEventListener('click',e=>{const b=e.target.closest('[data-observe]');if(b)switchClan(b.dataset.observe);});

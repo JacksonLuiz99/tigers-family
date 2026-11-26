@@ -1,6 +1,16 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.26.5",
+    "recordedAt": "2026-11-26T16:01:33.000Z",
+    "title": "Planilha da família",
+    "changes": [
+      "Em Família, baixe uma planilha única com os 16 clãs, resultados de guerra dos últimos 365 dias e rodadas da Liga acompanhadas.",
+      "O arquivo informa as datas das coletas e mostra onde os resultados disponíveis podem ter lacunas."
+    ],
+    "section": "family"
+  },
+  {
     "version": "2026.11.26.4",
     "recordedAt": "2026-11-26T15:55:20.000Z",
     "title": "Convite para o chat global",
