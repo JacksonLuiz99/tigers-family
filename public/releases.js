@@ -1,6 +1,16 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.26.2",
+    "recordedAt": "2026-11-26T15:26:52.000Z",
+    "title": "Guerras da família para a liderança",
+    "changes": [
+      "Na Área da liderança, acompanhe em uma tela a situação das guerras dos 16 clãs e veja onde há ataques pendentes confirmados.",
+      "Abra um clã para consultar novamente a guerra e preparar conversas individuais com os contatos cadastrados."
+    ],
+    "section": "leadership"
+  },
+  {
     "version": "2026.11.26.1",
     "recordedAt": "2026-11-26T15:00:33.000Z",
     "title": "Importação de contatos por CSV",

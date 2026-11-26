@@ -2,6 +2,7 @@ import { CLANS, findClan } from './clans.js';
 import { csvFile } from './exports.js';
 import { pendingMessage, individualMessage } from './whatsapp.js';
 import { previewContactCsv } from './contact-import.js';
+import { familyWarStatus } from './family-operations.js';
 export function possibleTransfers(moves) {
   const matches=move=>moves.filter(other=>other.playerTag===move.playerTag && other.clanTag!==move.clanTag && other.kind!==move.kind && Math.abs(other.detectedAt-move.detectedAt)<=48*3600000);
   return moves.map(move=>{
@@ -32,6 +33,7 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
   const table=(headers,rows)=>`<div class="table-wrap"><table class="responsive-table"><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(cells=>`<tr>${cells.map((cell,i)=>`<td data-label="${esc(headers[i])}">${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   let family=[];let moves=[];let config=null;let clanTag=null;let configVersion=0;let evolutionController=null;let leadershipKey='';let manualId=null;let manualRevision=0;let goalRevision=0;let busy=false;
   let contacts=new Map();let pendingPayload=null;let contactVersion=0;let pendingController=null;let importPreview=null;let importVersion=0;
+  let familyWarVersion=0;let familyWarController=null;let familyDetailVersion=0;let familyDetailController=null;let familyDetail=null;
   async function get(path,signal) {const r=await fetch(apiBase()+path,{signal:signal || AbortSignal.timeout(20000)});if(!r.ok)throw new Error('Consulta indisponível. Tente atualizar.');return r.json();}
   async function post(path,payload) {
     const r=await fetch(apiBase()+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${leadershipKey}`},body:JSON.stringify(payload),signal:AbortSignal.timeout(20000)});
@@ -119,6 +121,48 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
       $('contact-pending-status').textContent=`${pending.length} guerreiro${pending.length===1?'':'s'} com ataque pendente confirmado. Coleta: ${date(pendingPayload.current.warCapturedAt)}. Revise a mensagem e confirme o envio no WhatsApp.`;
     } catch(error){pendingPayload=null;$('contact-pending-list').replaceChildren();$('contact-pending-status').textContent=error.message;}
   }
+  async function refreshFamilyWars(){
+    familyWarController?.abort();const controller=new AbortController();familyWarController=controller;const version=++familyWarVersion,key=leadershipKey;
+    $('family-war-status').textContent='Consultando as guerras dos 16 clãs…';$('family-war-list').replaceChildren();$('family-war-refresh').disabled=true;
+    const rows=[];
+    for(let start=0;start<CLANS.length;start+=4){
+      if(controller.signal.aborted || key!==leadershipKey)break;
+      const batch=await Promise.all(CLANS.slice(start,start+4).map(async clan=>{
+        try{const response=await fetch(`${apiBase()}/api/dashboard?clan=${encodeURIComponent(clan.tag)}`,{signal:controller.signal});if(!response.ok)throw new Error('Consulta indisponível.');const payload=await response.json();if(payload.clanTag!==clan.tag)throw new Error('Resposta de outro clã.');return {clan,status:familyWarStatus(payload)};}
+        catch(error){return {clan,status:{kind:'unavailable',label:error.name==='AbortError'?'Consulta cancelada.':error.message}};}
+      }));
+      if(version!==familyWarVersion || key!==leadershipKey)break;
+      rows.push(...batch);
+      $('family-war-status').textContent=`${rows.length} de ${CLANS.length} clãs consultados. Pendências exigem coleta recente e guerra confirmada.`;
+      $('family-war-list').innerHTML=table(['Clã','Guerra e ataques','Ação'],rows.map(({clan,status})=>[esc(clan.label),esc(status.label),status.kind==='pending'?`<button type="button" class="outline-button" data-family-war-clan="${esc(clan.tag)}">Ver cobranças</button>`:'—']));
+    }
+    if(version===familyWarVersion && key===leadershipKey)$('family-war-refresh').disabled=false;
+  }
+  async function showFamilyWar(tag){
+    familyDetailController?.abort();const controller=new AbortController();familyDetailController=controller;const version=++familyDetailVersion,key=leadershipKey;
+    familyDetail=null;$('family-war-detail').replaceChildren();$('family-war-detail-status').textContent=`Consultando novamente ${label(tag)}…`;
+    try{
+      const [dashboard,contactResponse]=await Promise.all([
+        fetch(`${apiBase()}/api/dashboard?clan=${encodeURIComponent(tag)}`,{signal:controller.signal}).then(async r=>{if(!r.ok)throw new Error('Não foi possível consultar a guerra.');return r.json();}),
+        fetch(`${apiBase()}/api/leadership-contacts?clan=${encodeURIComponent(tag)}`,{headers:{Authorization:`Bearer ${key}`},signal:controller.signal}).then(async r=>{if(r.status===401)throw new Error('Chave de liderança recusada. Entre novamente.');if(!r.ok)throw new Error('Não foi possível consultar os contatos.');return r.json();})
+      ]);
+      if(version!==familyDetailVersion || key!==leadershipKey)return;
+      if(dashboard.clanTag!==tag || contactResponse.clanTag!==tag)throw new Error('A resposta não corresponde ao clã escolhido.');
+      const pending=pendingMessage(dashboard).pendingList;const numbers=new Map(contactResponse.contacts.map(c=>[c.playerTag,c.phone]));
+      familyDetail={tag,payload:dashboard,numbers};
+      $('family-war-detail-status').textContent=`${label(tag)} · ${pending.length} jogador(es) com ataque pendente confirmado. Revise antes de enviar.`;
+      $('family-war-detail').innerHTML=table(['Jogador','Ataques','Contato'],pending.map(player=>{
+        const phone=numbers.get(player.tag);
+        return [`${esc(player.name)} <small>${esc(player.tag)}</small>`,num(player.remaining),phone?`<a class="outline-button" data-family-contact="${esc(player.tag)}" href="https://wa.me/${phone}?text=${encodeURIComponent(individualMessage(dashboard,player.tag).text)}" target="_blank" rel="noopener noreferrer">Abrir conversa</a>`:'Sem telefone cadastrado'];
+      }));
+    }catch(error){if(version===familyDetailVersion && key===leadershipKey && !controller.signal.aborted)$('family-war-detail-status').textContent=error.message;}
+  }
+  $('family-war-refresh').addEventListener('click',refreshFamilyWars);
+  $('family-war-list').addEventListener('click',e=>{const button=e.target.closest('[data-family-war-clan]');if(button && leadershipKey)showFamilyWar(button.dataset.familyWarClan);});
+  $('family-war-detail').addEventListener('click',e=>{const link=e.target.closest('[data-family-contact]');if(!link)return;
+    try{if(!leadershipKey || !familyDetail)throw new Error('Consulte o clã novamente.');const phone=familyDetail.numbers.get(link.dataset.familyContact);if(!phone)throw new Error('Contato não encontrado.');const message=individualMessage(familyDetail.payload,link.dataset.familyContact);link.href=`https://wa.me/${phone}?text=${encodeURIComponent(message.text)}`;}
+    catch(error){e.preventDefault();$('family-war-detail-status').textContent=error.message;}
+  });
   async function loadContacts() {
     const tag=getData()?.clanTag;const key=leadershipKey;const version=++contactVersion;
     if(!tag || !key)return;
@@ -141,14 +185,14 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
       pendingMessage(payload);pendingPayload=payload;renderPendingContacts();
     } catch(error){if(controller===pendingController && !controller.signal.aborted)$('contact-pending-status').textContent=error.message;}
   }
-  function lock() {leadershipKey='';contacts.clear();pendingPayload=null;contactVersion++;pendingController?.abort();pendingController=null;clearImport();$('contact-form').reset();$('contact-list').replaceChildren();$('contact-pending-list').replaceChildren();$('contact-status').textContent='';$('contact-pending-status').textContent='';$('leadership-tools').hidden=true;$('leadership-password').value='';$('leadership-auth-state').textContent='Área bloqueada.';}
+  function lock() {leadershipKey='';contacts.clear();pendingPayload=null;contactVersion++;pendingController?.abort();pendingController=null;familyWarVersion++;familyWarController?.abort();familyWarController=null;familyDetailVersion++;familyDetailController?.abort();familyDetailController=null;familyDetail=null;$('family-war-list').replaceChildren();$('family-war-detail').replaceChildren();$('family-war-status').textContent='';$('family-war-detail-status').textContent='';$('family-war-refresh').disabled=false;clearImport();$('contact-form').reset();$('contact-list').replaceChildren();$('contact-pending-list').replaceChildren();$('contact-status').textContent='';$('contact-pending-status').textContent='';$('leadership-tools').hidden=true;$('leadership-password').value='';$('leadership-auth-state').textContent='Área bloqueada.';}
   $('leadership-open').addEventListener('click',()=>{$('leadership-dialog').showModal();$('leadership-error').textContent='';});
   $('leadership-close').addEventListener('click',()=>{lock();$('leadership-dialog').close();});
   $('leadership-dialog').addEventListener('cancel',lock);
   $('leadership-dialog').addEventListener('close',lock);
   $('leadership-lock').addEventListener('click',lock);
   $('leadership-login').addEventListener('submit',async e=>{e.preventDefault();const button=$('leadership-unlock');button.disabled=true;leadershipKey=$('leadership-password').value.trim();$('leadership-password').value='';
-    try {await post('/api/leadership',{});$('leadership-tools').hidden=false;$('leadership-auth-state').textContent=`Liberado para ${label(getData()?.clanTag)} nesta janela. Fechar bloqueia novamente.`;$('leadership-error').textContent='';fillGoals();loadContacts();}
+    try {await post('/api/leadership',{});$('leadership-tools').hidden=false;$('leadership-auth-state').textContent=`Liberado para ${label(getData()?.clanTag)} nesta janela. Fechar bloqueia novamente.`;$('leadership-error').textContent='';fillGoals();loadContacts();refreshFamilyWars();}
     catch(error){lock();$('leadership-error').textContent=error.message;}finally{button.disabled=false;}
   });
   $('contact-form').addEventListener('submit',async e=>{e.preventDefault();if(!leadershipKey)return;
