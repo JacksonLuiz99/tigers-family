@@ -1,6 +1,16 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.26.1",
+    "recordedAt": "2026-11-26T15:00:33.000Z",
+    "title": "Importação de contatos por CSV",
+    "changes": [
+      "Na Área da liderança, selecione um CSV com Tag e Telefone para conferir os contatos antes de salvar.",
+      "A prévia mostra quais contatos serão cadastrados ou atualizados e aponta as linhas ignoradas."
+    ],
+    "section": "leadership"
+  },
+  {
     "version": "2026.11.24.7",
     "recordedAt": "2026-11-24T21:09:20.000Z",
     "title": "Cobrança individual com contato",

@@ -1,6 +1,7 @@
 import { CLANS, findClan } from './clans.js';
 import { csvFile } from './exports.js';
 import { pendingMessage, individualMessage } from './whatsapp.js';
+import { previewContactCsv } from './contact-import.js';
 export function possibleTransfers(moves) {
   const matches=move=>moves.filter(other=>other.playerTag===move.playerTag && other.clanTag!==move.clanTag && other.kind!==move.kind && Math.abs(other.detectedAt-move.detectedAt)<=48*3600000);
   return moves.map(move=>{
@@ -30,7 +31,7 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
   const options=(selected='')=>CLANS.map(c=>`<option value="${esc(c.tag)}" ${selected===c.tag?'selected':''}>${esc(c.label)}</option>`).join('');
   const table=(headers,rows)=>`<div class="table-wrap"><table class="responsive-table"><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(cells=>`<tr>${cells.map((cell,i)=>`<td data-label="${esc(headers[i])}">${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   let family=[];let moves=[];let config=null;let clanTag=null;let configVersion=0;let evolutionController=null;let leadershipKey='';let manualId=null;let manualRevision=0;let goalRevision=0;let busy=false;
-  let contacts=new Map();let pendingPayload=null;let contactVersion=0;let pendingController=null;
+  let contacts=new Map();let pendingPayload=null;let contactVersion=0;let pendingController=null;let importPreview=null;let importVersion=0;
   async function get(path,signal) {const r=await fetch(apiBase()+path,{signal:signal || AbortSignal.timeout(20000)});if(!r.ok)throw new Error('Consulta indisponível. Tente atualizar.');return r.json();}
   async function post(path,payload) {
     const r=await fetch(apiBase()+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${leadershipKey}`},body:JSON.stringify(payload),signal:AbortSignal.timeout(20000)});
@@ -80,6 +81,32 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
     const rows=[...contacts.values()].sort((a,b)=>a.playerTag.localeCompare(b.playerTag));
     $('contact-list').innerHTML=rows.length?table(['Jogador','Telefone','Ações'],rows.map(c=>[esc(c.playerTag),`•••• ${esc(c.phone.slice(-4))}`,`<button type="button" class="text-button" data-edit-contact="${esc(c.playerTag)}">Editar</button> <button type="button" class="text-button" data-remove-contact="${esc(c.playerTag)}">Excluir</button>`])):empty('Nenhum telefone cadastrado neste clã.');
   }
+  function clearImport(){importPreview=null;importVersion++;$('contact-import-file').value='';$('contact-import-preview').replaceChildren();$('contact-import-confirm').disabled=true;$('contact-import-status').textContent='';}
+  $('contact-import-file').addEventListener('change',async()=>{
+    const version=++importVersion,tag=getData()?.clanTag,key=leadershipKey,file=$('contact-import-file').files[0];importPreview=null;$('contact-import-confirm').disabled=true;$('contact-import-preview').replaceChildren();
+    if(!file || !key)return;
+    try{
+      if(file.size>200000)throw new Error('O CSV deve ter no máximo 200 KB.');
+      const preview=previewContactCsv(await file.text(),contacts.keys());
+      if(version!==importVersion || key!==leadershipKey || tag!==getData()?.clanTag)return;
+      if(contacts.size+preview.valid.filter(row=>row.action==='Cadastrar').length>100)throw new Error('A importação ultrapassaria o limite de 100 contatos deste clã.');
+      importPreview={...preview,tag,key,version};
+      $('contact-import-preview').innerHTML=preview.valid.length?table(['Tag','Telefone','Ação'],preview.valid.map(row=>[esc(row.playerTag),`•••• ${esc(row.phone.slice(-4))}`,esc(row.action)])):empty('Nenhum contato válido para importar.');
+      $('contact-import-status').textContent=`${preview.valid.length} contato(s) pronto(s); ${preview.errors.length} linha(s) ignorada(s). ${preview.errors.slice(0,5).map(e=>`Linha ${e.line}: ${e.reason}`).join(' ')}`;
+      $('contact-import-confirm').disabled=!preview.valid.length;
+    }catch(error){if(version===importVersion)$('contact-import-status').textContent=error.message;}
+  });
+  $('contact-import-confirm').addEventListener('click',async()=>{
+    const preview=importPreview;if(!preview || !leadershipKey || preview.key!==leadershipKey || preview.tag!==getData()?.clanTag)return;
+    $('contact-import-confirm').disabled=true;let saved=0;
+    for(const row of preview.valid){
+      if(preview!==importPreview || preview.key!==leadershipKey || preview.tag!==getData()?.clanTag)break;
+      try{await post('/api/leadership-contacts',{clanTag:preview.tag,playerTag:row.playerTag,phone:row.phone});saved++;}
+      catch(error){clearImport();await loadContacts();$('contact-import-status').textContent=`${saved} salvo(s). Importação interrompida: ${error.message} Selecione o arquivo novamente para revisar o restante.`;return;}
+      $('contact-import-status').textContent=`Salvando contatos: ${saved}/${preview.valid.length}…`;
+    }
+    if(preview===importPreview && preview.key===leadershipKey && preview.tag===getData()?.clanTag){clearImport();await loadContacts();$('contact-import-status').textContent=`${saved} contato(s) salvo(s) neste clã.`;}
+  });
   function renderPendingContacts() {
     if(!pendingPayload){$('contact-pending-list').replaceChildren();return;}
     try {
@@ -114,7 +141,7 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
       pendingMessage(payload);pendingPayload=payload;renderPendingContacts();
     } catch(error){if(controller===pendingController && !controller.signal.aborted)$('contact-pending-status').textContent=error.message;}
   }
-  function lock() {leadershipKey='';contacts.clear();pendingPayload=null;contactVersion++;pendingController?.abort();pendingController=null;$('contact-form').reset();$('contact-list').replaceChildren();$('contact-pending-list').replaceChildren();$('contact-status').textContent='';$('contact-pending-status').textContent='';$('leadership-tools').hidden=true;$('leadership-password').value='';$('leadership-auth-state').textContent='Área bloqueada.';}
+  function lock() {leadershipKey='';contacts.clear();pendingPayload=null;contactVersion++;pendingController?.abort();pendingController=null;clearImport();$('contact-form').reset();$('contact-list').replaceChildren();$('contact-pending-list').replaceChildren();$('contact-status').textContent='';$('contact-pending-status').textContent='';$('leadership-tools').hidden=true;$('leadership-password').value='';$('leadership-auth-state').textContent='Área bloqueada.';}
   $('leadership-open').addEventListener('click',()=>{$('leadership-dialog').showModal();$('leadership-error').textContent='';});
   $('leadership-close').addEventListener('click',()=>{lock();$('leadership-dialog').close();});
   $('leadership-dialog').addEventListener('cancel',lock);
@@ -126,14 +153,14 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
   });
   $('contact-form').addEventListener('submit',async e=>{e.preventDefault();if(!leadershipKey)return;
     const tag=getData()?.clanTag;const playerTag=$('contact-player').value.trim().toUpperCase();const phone=$('contact-phone').value.trim();$('contact-save').disabled=true;
-    try {await post('/api/leadership-contacts',{clanTag:tag,playerTag,phone});if(getData()?.clanTag===tag && leadershipKey){$('contact-form').reset();await loadContacts();$('contact-status').textContent='Contato salvo neste clã.';}}
+    try {await post('/api/leadership-contacts',{clanTag:tag,playerTag,phone});if(getData()?.clanTag===tag && leadershipKey){clearImport();$('contact-form').reset();await loadContacts();$('contact-status').textContent='Contato salvo neste clã.';}}
     catch(error){$('contact-status').textContent=error.message;}finally{$('contact-save').disabled=false;}
   });
   $('contact-list').addEventListener('click',async e=>{
     const edit=e.target.closest('[data-edit-contact]');if(edit){const c=contacts.get(edit.dataset.editContact);if(c){$('contact-player').value=c.playerTag;$('contact-phone').value='+'+c.phone;$('contact-phone').focus();}return;}
     const remove=e.target.closest('[data-remove-contact]');if(!remove || !leadershipKey)return;
     const tag=getData()?.clanTag;remove.disabled=true;
-    try {await post('/api/leadership-contacts',{clanTag:tag,playerTag:remove.dataset.removeContact,phone:null});if(getData()?.clanTag===tag && leadershipKey){await loadContacts();$('contact-status').textContent='Contato excluído deste clã.';}}
+    try {await post('/api/leadership-contacts',{clanTag:tag,playerTag:remove.dataset.removeContact,phone:null});if(getData()?.clanTag===tag && leadershipKey){clearImport();await loadContacts();$('contact-status').textContent='Contato excluído deste clã.';}}
     catch(error){$('contact-status').textContent=error.message;}finally{remove.disabled=false;}
   });
   $('contact-refresh-pending').addEventListener('click',refreshPendingContacts);
