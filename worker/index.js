@@ -8,6 +8,7 @@ import { familyDashboard, familyOverview, synchronizeFamily, recordPrimarySummar
 import { familyResults } from './results.js';
 import { detailedRanking } from './detailed-wars.js';
 import { listContacts, saveContact, ContactInputError } from './contacts.js';
+import { playerHistory, PlayerHistoryInputError } from './player-history.js';
 
 const json = (data,status=200,headers={}) => Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 
@@ -52,6 +53,13 @@ export async function route(request,env) {
       let input;try{input=JSON.parse(new TextDecoder().decode(bytes));}catch{return json({error:'Formulário inválido.'},400,headers);}
       return json(await saveContact(env,input),200,headers);
     } catch(error){return json({error:error instanceof ContactInputError?error.message:'Não foi possível consultar ou salvar contatos.'},error instanceof ContactInputError?400:503,headers);}
+  }
+  if(path==='/api/leadership-player-history') {
+    if(request.method!=='GET')return json({error:'method_not_allowed'},405,headers);
+    if(!await authorized(request,env.LEADERSHIP_TOKEN))return json({error:'Chave de liderança inválida.'},401,headers);
+    if(!env.DB)return json({error:'Banco indisponível.'},503,headers);
+    try{return json(await playerHistory(env,url.searchParams.get('player'),url.searchParams.get('from') || '',url.searchParams.get('to') || ''),200,headers);}
+    catch(error){return json({error:error instanceof PlayerHistoryInputError?error.message:'Histórico indisponível.'},error instanceof PlayerHistoryInputError?400:503,headers);}
   }
   if (['/api/management','/api/player-evolution','/api/clan-management','/api/leadership','/api/manual-wars','/api/goals'].includes(path)) {
     try {

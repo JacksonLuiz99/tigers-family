@@ -34,6 +34,7 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
   let family=[];let moves=[];let config=null;let clanTag=null;let configVersion=0;let evolutionController=null;let leadershipKey='';let manualId=null;let manualRevision=0;let goalRevision=0;let busy=false;
   let contacts=new Map();let pendingPayload=null;let contactVersion=0;let pendingController=null;let importPreview=null;let importVersion=0;
   let familyWarVersion=0;let familyWarController=null;let familyDetailVersion=0;let familyDetailController=null;let familyDetail=null;
+  let playerHistoryVersion=0;let playerHistoryController=null;
   async function get(path,signal) {const r=await fetch(apiBase()+path,{signal:signal || AbortSignal.timeout(20000)});if(!r.ok)throw new Error('Consulta indisponível. Tente atualizar.');return r.json();}
   async function post(path,payload) {
     const r=await fetch(apiBase()+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${leadershipKey}`},body:JSON.stringify(payload),signal:AbortSignal.timeout(20000)});
@@ -163,6 +164,24 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
     try{if(!leadershipKey || !familyDetail)throw new Error('Consulte o clã novamente.');const phone=familyDetail.numbers.get(link.dataset.familyContact);if(!phone)throw new Error('Contato não encontrado.');const message=individualMessage(familyDetail.payload,link.dataset.familyContact);link.href=`https://wa.me/${phone}?text=${encodeURIComponent(message.text)}`;}
     catch(error){e.preventDefault();$('family-war-detail-status').textContent=error.message;}
   });
+  $('player-history-form').addEventListener('submit',async e=>{
+    e.preventDefault();if(!leadershipKey)return;
+    playerHistoryController?.abort();const controller=new AbortController();playerHistoryController=controller;const version=++playerHistoryVersion,key=leadershipKey;
+    const tag=$('player-history-tag').value.trim().toUpperCase();const from=$('player-history-from').value,to=$('player-history-to').value;
+    $('player-history-search').disabled=true;$('player-history-result').replaceChildren();$('player-history-status').textContent='Consultando os registros disponíveis…';
+    try{
+      const query=new URLSearchParams({player:tag,from,to});const response=await fetch(`${apiBase()}/api/leadership-player-history?${query}`,{headers:{Authorization:`Bearer ${key}`},signal:controller.signal});
+      const result=await response.json();if(!response.ok)throw new Error(result.error || 'Histórico indisponível.');
+      if(version!==playerHistoryVersion || key!==leadershipKey)return;
+      const clans=[...new Set([...result.points,...result.moves,...result.wars].map(r=>r.clanTag))];
+      $('player-history-status').textContent=`${tag} · ${clans.length} clã(s) com registro · ${result.wars.length} guerra(s) detalhada(s) · ${result.moves.length} movimento(s) observado(s). Guerras: até 270 dias; movimentos: até 90 dias; coletas diárias: até 32 dias. ${result.coverage.warsTruncated || result.coverage.movesTruncated?'A listagem atingiu o limite de registros; reduza o período.':''}`;
+      const wars=result.wars.length?table(['Término','Clã','Adversário','Ataques','Estrelas','Triplos'],result.wars.map(w=>[date(w.endAt),esc(label(w.clanTag)),esc(w.opponent),`${num(w.used)} / ${num(w.available)}`,num(w.stars),num(w.triples)])):empty('Nenhuma guerra detalhada deste jogador no período. A ausência de registro não confirma ausência de participação.');
+      const moves=result.moves.length?table(['Detectado em','Clã','Movimento'],result.moves.map(m=>[date(m.detectedAt),esc(label(m.clanTag)),m.kind==='join'?'Entrada observada':'Saída observada'])):empty('Nenhuma entrada ou saída observada no período disponível.');
+      const points=result.points.length?table(['Coleta','Clã','CV','Troféus','Doações'],result.points.map(p=>[date(p.capturedAt),esc(label(p.clanTag)),num(p.townHallLevel),num(p.trophies),num(p.donations)])):empty('Nenhuma coleta diária deste jogador no período disponível.');
+      $('player-history-result').innerHTML=`<h4>GUERRAS DETALHADAS</h4>${wars}<h4>ENTRADAS E SAÍDAS</h4>${moves}<h4>COLETAS DIÁRIAS</h4>${points}`;
+    }catch(error){if(version===playerHistoryVersion && key===leadershipKey && !controller.signal.aborted)$('player-history-status').textContent=error.message;}
+    finally{if(version===playerHistoryVersion)$('player-history-search').disabled=false;}
+  });
   async function loadContacts() {
     const tag=getData()?.clanTag;const key=leadershipKey;const version=++contactVersion;
     if(!tag || !key)return;
@@ -185,14 +204,14 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
       pendingMessage(payload);pendingPayload=payload;renderPendingContacts();
     } catch(error){if(controller===pendingController && !controller.signal.aborted)$('contact-pending-status').textContent=error.message;}
   }
-  function lock() {leadershipKey='';contacts.clear();pendingPayload=null;contactVersion++;pendingController?.abort();pendingController=null;familyWarVersion++;familyWarController?.abort();familyWarController=null;familyDetailVersion++;familyDetailController?.abort();familyDetailController=null;familyDetail=null;$('family-war-list').replaceChildren();$('family-war-detail').replaceChildren();$('family-war-status').textContent='';$('family-war-detail-status').textContent='';$('family-war-refresh').disabled=false;clearImport();$('contact-form').reset();$('contact-list').replaceChildren();$('contact-pending-list').replaceChildren();$('contact-status').textContent='';$('contact-pending-status').textContent='';$('leadership-tools').hidden=true;$('leadership-password').value='';$('leadership-auth-state').textContent='Área bloqueada.';}
+  function lock() {leadershipKey='';contacts.clear();pendingPayload=null;contactVersion++;pendingController?.abort();pendingController=null;familyWarVersion++;familyWarController?.abort();familyWarController=null;familyDetailVersion++;familyDetailController?.abort();familyDetailController=null;familyDetail=null;playerHistoryVersion++;playerHistoryController?.abort();playerHistoryController=null;$('player-history-form').reset();$('player-history-result').replaceChildren();$('player-history-status').textContent='';$('player-history-search').disabled=false;$('family-war-list').replaceChildren();$('family-war-detail').replaceChildren();$('family-war-status').textContent='';$('family-war-detail-status').textContent='';$('family-war-refresh').disabled=false;clearImport();$('contact-form').reset();$('contact-list').replaceChildren();$('contact-pending-list').replaceChildren();$('contact-status').textContent='';$('contact-pending-status').textContent='';$('leadership-tools').hidden=true;$('leadership-password').value='';$('leadership-auth-state').textContent='Área bloqueada.';}
   $('leadership-open').addEventListener('click',()=>{$('leadership-dialog').showModal();$('leadership-error').textContent='';});
   $('leadership-close').addEventListener('click',()=>{lock();$('leadership-dialog').close();});
   $('leadership-dialog').addEventListener('cancel',lock);
   $('leadership-dialog').addEventListener('close',lock);
   $('leadership-lock').addEventListener('click',lock);
   $('leadership-login').addEventListener('submit',async e=>{e.preventDefault();const button=$('leadership-unlock');button.disabled=true;leadershipKey=$('leadership-password').value.trim();$('leadership-password').value='';
-    try {await post('/api/leadership',{});$('leadership-tools').hidden=false;$('leadership-auth-state').textContent=`Liberado para ${label(getData()?.clanTag)} nesta janela. Fechar bloqueia novamente.`;$('leadership-error').textContent='';fillGoals();loadContacts();refreshFamilyWars();}
+    try {await post('/api/leadership',{});$('leadership-tools').hidden=false;$('leadership-auth-state').textContent=`Liberado para ${label(getData()?.clanTag)} nesta janela. Fechar bloqueia novamente.`;$('leadership-error').textContent='';$('player-history-from').value=new Date(Date.now()-30*86400000).toISOString().slice(0,10);$('player-history-to').value=new Date().toISOString().slice(0,10);fillGoals();loadContacts();refreshFamilyWars();}
     catch(error){lock();$('leadership-error').textContent=error.message;}finally{button.disabled=false;}
   });
   $('contact-form').addEventListener('submit',async e=>{e.preventDefault();if(!leadershipKey)return;

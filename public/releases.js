@@ -1,6 +1,16 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.26.3",
+    "recordedAt": "2026-11-26T15:40:37.000Z",
+    "title": "Histórico do jogador na família",
+    "changes": [
+      "Na Área da liderança, pesquise uma tag e escolha as datas para reunir guerras acompanhadas, entradas e saídas e coletas dos clãs Tigers.",
+      "A tela informa o período disponível de cada registro e deixa claras as lacunas de guerras privadas ou anteriores ao acompanhamento."
+    ],
+    "section": "leadership"
+  },
+  {
     "version": "2026.11.26.2",
     "recordedAt": "2026-11-26T15:26:52.000Z",
     "title": "Guerras da família para a liderança",
