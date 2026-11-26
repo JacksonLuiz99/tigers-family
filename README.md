@@ -39,6 +39,8 @@ Os endpoints `warlog` e `capitalraidseasons` são consultados no máximo uma vez
 
 O Instagram da família, https://www.instagram.com/tigers_of_war/, está disponível no cabeçalho, na central e na chamada de comunidade.
 
+O convite para o chat global do TOW fica na **Central de avisos**, com link direto para o jogo: `https://link.clashofclans.com/?action=OpenGlobalChat&chatId=P55e61801e65347f99103ab407990a149`.
+
 O link público de aviso é a variável do Worker `DISCORD_PUBLIC_URL`. A API valida os domínios e nunca reutiliza a URL secreta do webhook como convite. Atualmente os avisos são enviados ao canal do Discord configurado pelo administrador.
 
 ## Preferências de leitura e imagem do clã

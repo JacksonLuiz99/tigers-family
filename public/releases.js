@@ -1,6 +1,15 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.26.4",
+    "recordedAt": "2026-11-26T15:55:20.000Z",
+    "title": "Convite para o chat global",
+    "changes": [
+      "Na Central de avisos, abra o chat global do TOW pelo convite e participe das conversas e desafios da família."
+    ],
+    "section": "alerts"
+  },
+  {
     "version": "2026.11.26.3",
     "recordedAt": "2026-11-26T15:40:37.000Z",
     "title": "Histórico do jogador na família",
