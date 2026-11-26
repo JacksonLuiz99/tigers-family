@@ -1,6 +1,16 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.26.6",
+    "recordedAt": "2026-11-26T16:18:06.000Z",
+    "title": "Ritmo da guerra atual",
+    "changes": [
+      "Em Campo de batalha, veja uma estimativa de ataques de três estrelas para os ataques que restam na guerra atual.",
+      "Quando os alvos estão identificados, o painel mostra quantas bases ainda faltam fechar. Com poucos ataques ou dados incompletos, informa a limitação."
+    ],
+    "section": "wars"
+  },
+  {
     "version": "2026.11.26.5",
     "recordedAt": "2026-11-26T16:01:33.000Z",
     "title": "Planilha da família",
