@@ -1,6 +1,16 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.27.1",
+    "recordedAt": "2026-11-27T13:02:19.000Z",
+    "title": "Guerras urgentes primeiro",
+    "changes": [
+      "Na Área da liderança, as guerras da família com ataques pendentes confirmados aparecem primeiro, começando pelo prazo mais próximo.",
+      "A lista mostra o tempo restante e deixa de tratar uma pendência como confirmada quando a coleta fica antiga."
+    ],
+    "section": "leadership"
+  },
+  {
     "version": "2026.11.26.7",
     "recordedAt": "2026-11-26T21:27:30.000Z",
     "title": "Projeção com limites mais claros",

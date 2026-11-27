@@ -2,7 +2,7 @@ import { CLANS, findClan } from './clans.js';
 import { csvFile } from './exports.js';
 import { pendingMessage, individualMessage } from './whatsapp.js';
 import { previewContactCsv } from './contact-import.js';
-import { familyWarStatus } from './family-operations.js';
+import { familyWarStatus, prioritizeFamilyWars } from './family-operations.js';
 export function possibleTransfers(moves) {
   const matches=move=>moves.filter(other=>other.playerTag===move.playerTag && other.clanTag!==move.clanTag && other.kind!==move.kind && Math.abs(other.detectedAt-move.detectedAt)<=48*3600000);
   return moves.map(move=>{
@@ -33,7 +33,7 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
   const table=(headers,rows)=>`<div class="table-wrap"><table class="responsive-table"><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(cells=>`<tr>${cells.map((cell,i)=>`<td data-label="${esc(headers[i])}">${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   let family=[];let moves=[];let config=null;let clanTag=null;let configVersion=0;let evolutionController=null;let leadershipKey='';let manualId=null;let manualRevision=0;let goalRevision=0;let busy=false;
   let contacts=new Map();let pendingPayload=null;let contactVersion=0;let pendingController=null;let importPreview=null;let importVersion=0;
-  let familyWarVersion=0;let familyWarController=null;let familyDetailVersion=0;let familyDetailController=null;let familyDetail=null;
+  let familyWarVersion=0;let familyWarController=null;let familyWarRows=[];let familyDetailVersion=0;let familyDetailController=null;let familyDetail=null;
   let playerHistoryVersion=0;let playerHistoryController=null;
   async function get(path,signal) {const r=await fetch(apiBase()+path,{signal:signal || AbortSignal.timeout(20000)});if(!r.ok)throw new Error('Consulta indisponível. Tente atualizar.');return r.json();}
   async function post(path,payload) {
@@ -122,20 +122,31 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
       $('contact-pending-status').textContent=`${pending.length} guerreiro${pending.length===1?'':'s'} com ataque pendente confirmado. Coleta: ${date(pendingPayload.current.warCapturedAt)}. Revise a mensagem e confirme o envio no WhatsApp.`;
     } catch(error){pendingPayload=null;$('contact-pending-list').replaceChildren();$('contact-pending-status').textContent=error.message;}
   }
+  function renderFamilyWars(){
+    if(!leadershipKey)return;
+    const now=Date.now(),rows=prioritizeFamilyWars(familyWarRows,{now});
+    $('family-war-list').innerHTML=rows.length?table(['Clã','Situação','Prazo','Ação'],rows.map(({clan,status})=>[
+      esc(clan.label),esc(status.label),status.kind==='pending'?`${date(status.endAt)} · ${Math.floor(Math.ceil((status.endAt-now)/60000)/60)}h${String(Math.ceil((status.endAt-now)/60000)%60).padStart(2,'0')} restantes`:'—',
+      status.kind==='pending'?`<button type="button" class="outline-button" data-family-war-clan="${esc(clan.tag)}">Ver cobranças</button>`:'—'
+    ])):empty('Aguardando consultas dos clãs.');
+    if(familyDetail && familyWarStatus(familyDetail.payload,{now}).kind!=='pending'){
+      familyDetail=null;$('family-war-detail').replaceChildren();$('family-war-detail-status').textContent='A consulta deste clã ficou antiga. Consulte a guerra novamente.';
+    }
+  }
   async function refreshFamilyWars(){
     familyWarController?.abort();const controller=new AbortController();familyWarController=controller;const version=++familyWarVersion,key=leadershipKey;
+    familyWarRows=[];familyDetailVersion++;familyDetailController?.abort();familyDetail=null;$('family-war-detail').replaceChildren();$('family-war-detail-status').textContent='';
     $('family-war-status').textContent='Consultando as guerras dos 16 clãs…';$('family-war-list').replaceChildren();$('family-war-refresh').disabled=true;
-    const rows=[];
     for(let start=0;start<CLANS.length;start+=4){
       if(controller.signal.aborted || key!==leadershipKey)break;
       const batch=await Promise.all(CLANS.slice(start,start+4).map(async clan=>{
-        try{const response=await fetch(`${apiBase()}/api/dashboard?clan=${encodeURIComponent(clan.tag)}`,{signal:controller.signal});if(!response.ok)throw new Error('Consulta indisponível.');const payload=await response.json();if(payload.clanTag!==clan.tag)throw new Error('Resposta de outro clã.');return {clan,status:familyWarStatus(payload)};}
+        try{const response=await fetch(`${apiBase()}/api/dashboard?clan=${encodeURIComponent(clan.tag)}`,{signal:controller.signal});if(!response.ok)throw new Error('Consulta indisponível.');const payload=await response.json();if(payload.clanTag!==clan.tag)throw new Error('Resposta de outro clã.');return {clan,payload};}
         catch(error){return {clan,status:{kind:'unavailable',label:error.name==='AbortError'?'Consulta cancelada.':error.message}};}
       }));
       if(version!==familyWarVersion || key!==leadershipKey)break;
-      rows.push(...batch);
-      $('family-war-status').textContent=`${rows.length} de ${CLANS.length} clãs consultados. Pendências exigem coleta recente e guerra confirmada.`;
-      $('family-war-list').innerHTML=table(['Clã','Guerra e ataques','Ação'],rows.map(({clan,status})=>[esc(clan.label),esc(status.label),status.kind==='pending'?`<button type="button" class="outline-button" data-family-war-clan="${esc(clan.tag)}">Ver cobranças</button>`:'—']));
+      familyWarRows.push(...batch);
+      $('family-war-status').textContent=`${familyWarRows.length} de ${CLANS.length} clãs consultados. Guerras com pendências confirmadas aparecem primeiro, pelo prazo mais próximo. Coletas antigas deixam de confirmar pendências.`;
+      renderFamilyWars();
     }
     if(version===familyWarVersion && key===leadershipKey)$('family-war-refresh').disabled=false;
   }
@@ -159,6 +170,7 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
     }catch(error){if(version===familyDetailVersion && key===leadershipKey && !controller.signal.aborted)$('family-war-detail-status').textContent=error.message;}
   }
   $('family-war-refresh').addEventListener('click',refreshFamilyWars);
+  setInterval(()=>{if(leadershipKey && $('leadership-dialog').open)renderFamilyWars();},15000);
   $('family-war-list').addEventListener('click',e=>{const button=e.target.closest('[data-family-war-clan]');if(button && leadershipKey)showFamilyWar(button.dataset.familyWarClan);});
   $('family-war-detail').addEventListener('click',e=>{const link=e.target.closest('[data-family-contact]');if(!link)return;
     try{if(!leadershipKey || !familyDetail)throw new Error('Consulte o clã novamente.');const phone=familyDetail.numbers.get(link.dataset.familyContact);if(!phone)throw new Error('Contato não encontrado.');const message=individualMessage(familyDetail.payload,link.dataset.familyContact);link.href=`https://wa.me/${phone}?text=${encodeURIComponent(message.text)}`;}
@@ -204,7 +216,7 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
       pendingMessage(payload);pendingPayload=payload;renderPendingContacts();
     } catch(error){if(controller===pendingController && !controller.signal.aborted)$('contact-pending-status').textContent=error.message;}
   }
-  function lock() {leadershipKey='';contacts.clear();pendingPayload=null;contactVersion++;pendingController?.abort();pendingController=null;familyWarVersion++;familyWarController?.abort();familyWarController=null;familyDetailVersion++;familyDetailController?.abort();familyDetailController=null;familyDetail=null;playerHistoryVersion++;playerHistoryController?.abort();playerHistoryController=null;$('player-history-form').reset();$('player-history-result').replaceChildren();$('player-history-status').textContent='';$('player-history-search').disabled=false;$('family-war-list').replaceChildren();$('family-war-detail').replaceChildren();$('family-war-status').textContent='';$('family-war-detail-status').textContent='';$('family-war-refresh').disabled=false;clearImport();$('contact-form').reset();$('contact-list').replaceChildren();$('contact-pending-list').replaceChildren();$('contact-status').textContent='';$('contact-pending-status').textContent='';$('leadership-tools').hidden=true;$('leadership-password').value='';$('leadership-auth-state').textContent='Área bloqueada.';}
+  function lock() {leadershipKey='';contacts.clear();pendingPayload=null;contactVersion++;pendingController?.abort();pendingController=null;familyWarVersion++;familyWarController?.abort();familyWarController=null;familyWarRows=[];familyDetailVersion++;familyDetailController?.abort();familyDetailController=null;familyDetail=null;playerHistoryVersion++;playerHistoryController?.abort();playerHistoryController=null;$('player-history-form').reset();$('player-history-result').replaceChildren();$('player-history-status').textContent='';$('player-history-search').disabled=false;$('family-war-list').replaceChildren();$('family-war-detail').replaceChildren();$('family-war-status').textContent='';$('family-war-detail-status').textContent='';$('family-war-refresh').disabled=false;clearImport();$('contact-form').reset();$('contact-list').replaceChildren();$('contact-pending-list').replaceChildren();$('contact-status').textContent='';$('contact-pending-status').textContent='';$('leadership-tools').hidden=true;$('leadership-password').value='';$('leadership-auth-state').textContent='Área bloqueada.';}
   $('leadership-open').addEventListener('click',()=>{$('leadership-dialog').showModal();$('leadership-error').textContent='';});
   $('leadership-close').addEventListener('click',()=>{lock();$('leadership-dialog').close();});
   $('leadership-dialog').addEventListener('cancel',lock);
