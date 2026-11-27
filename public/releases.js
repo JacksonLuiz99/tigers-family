@@ -1,6 +1,16 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.27.2",
+    "recordedAt": "2026-11-27T13:31:18.000Z",
+    "title": "Conversa do clã certo",
+    "changes": [
+      "Na Área da liderança, o link de cobrança individual só abre se a lista de ataques pendentes ainda pertence ao clã selecionado.",
+      "Ao trocar de clã ou perder o contexto da consulta, o painel pede uma nova verificação antes de abrir o WhatsApp."
+    ],
+    "section": "leadership"
+  },
+  {
     "version": "2026.11.27.1",
     "recordedAt": "2026-11-27T13:02:19.000Z",
     "title": "Guerras urgentes primeiro",

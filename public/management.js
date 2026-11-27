@@ -240,7 +240,7 @@ export function initManagement({getData,apiBase,escape:esc,num,date,switchClan})
   });
   $('contact-refresh-pending').addEventListener('click',refreshPendingContacts);
   $('contact-pending-list').addEventListener('click',e=>{const link=e.target.closest('[data-contact-player]');if(!link)return;
-    try {const contact=contacts.get(link.dataset.contactPlayer);if(!leadershipKey || !contact || !pendingPayload)throw new Error('Atualize a consulta antes de abrir a conversa.');const message=individualMessage(pendingPayload,link.dataset.contactPlayer);link.href=`https://wa.me/${contact.phone}?text=${encodeURIComponent(message.text)}`;}
+    try {const contact=contacts.get(link.dataset.contactPlayer);if(!leadershipKey || !contact || !pendingPayload || pendingPayload.clanTag!==getData()?.clanTag)throw new Error('Atualize a consulta antes de abrir a conversa.');const message=individualMessage(pendingPayload,link.dataset.contactPlayer);link.href=`https://wa.me/${contact.phone}?text=${encodeURIComponent(message.text)}`;}
     catch(error){e.preventDefault();$('contact-pending-status').textContent=error.message;}
   });
   function fillGoals() {
