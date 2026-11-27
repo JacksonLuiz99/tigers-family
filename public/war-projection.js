@@ -25,9 +25,9 @@ export function warProjection(payload,{now=Date.now()}={}) {
   const tripledBases=reliableTargets?new Set(attacks.filter(a=>a.stars===3).map(a=>a.defenderTag)).size:null;
   const basesMissing=tripledBases===null?null:war.teamSize-tripledBases;
   const neededRate=basesMissing===null?null:Math.ceil(100*basesMissing/remaining);
-  const headline=`${triples}/${used} ataques deram 3★ (${Math.round(rate*100)}%). Mantido esse ritmo, seriam cerca de ${projected} ataques de 3★ nos ${remaining} restantes.`;
+  const headline=`${triples}/${used} ataques deram 3★ (${Math.round(rate*100)}%). Se todos os ${remaining} ataques restantes forem realizados no mesmo ritmo, a simulação aponta cerca de ${projected} novos ataques de 3★.`;
   const detail=basesMissing===null?'Os alvos não estão completos na coleta; não é possível confirmar quantas bases faltam fechar.':basesMissing>remaining?
     `Faltam ${basesMissing} bases sem 3★, mas restam apenas ${remaining} ataques. Não há ataques suficientes para fechar todas as bases nesta guerra.`:
-    `Faltam ${basesMissing} base${basesMissing===1?'':'s'} sem 3★. Para alcançar esse mínimo, seriam necessários triplos em pelo menos ${neededRate}% dos ataques restantes. ${projected>=basesMissing?'O ritmo atual alcança esse mínimo numérico.':'O ritmo atual fica abaixo desse mínimo numérico.'} Ataques repetidos no mesmo alvo podem mudar o resultado.`;
-  return {kind:'estimate',used,remaining,triples,rate,projected,basesMissing,neededRate,message:`${headline} ${detail} Estimativa, não previsão de vitória.`};
+    `Faltam ${basesMissing} base${basesMissing===1?'':'s'} sem 3★. Para alcançar esse mínimo, seriam necessários triplos em pelo menos ${neededRate}% dos ataques restantes, em alvos ainda abertos. ${projected>=basesMissing?'Nesse cenário, o ritmo atual alcançaria o mínimo numérico.':'Nesse cenário, o ritmo atual ficaria abaixo do mínimo numérico.'}`;
+  return {kind:'estimate',used,remaining,triples,rate,projected,basesMissing,neededRate,message:`${headline} ${detail} Ataques não realizados ou repetidos no mesmo alvo podem impedir o fechamento. A simulação não prevê vitória.`};
 }

@@ -1,6 +1,16 @@
 // Datas históricas vêm dos registros das mudanças; não representam necessariamente o minuto exato do deploy.
 export const RELEASES = Object.freeze([
   {
+    "version": "2026.11.26.7",
+    "recordedAt": "2026-11-26T21:27:30.000Z",
+    "title": "Projeção com limites mais claros",
+    "changes": [
+      "Em Campo de batalha, a estimativa da guerra agora explica que depende de todos os ataques restantes serem usados no mesmo ritmo e em alvos ainda abertos.",
+      "A comparação com guerras encerradas mostrou que esse ritmo pode parecer suficiente sem que todas as bases sejam fechadas."
+    ],
+    "section": "wars"
+  },
+  {
     "version": "2026.11.26.6",
     "recordedAt": "2026-11-26T16:18:06.000Z",
     "title": "Ritmo da guerra atual",

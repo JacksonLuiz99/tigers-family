@@ -17,7 +17,8 @@ test('projeção espera amostra mínima e conta bases únicas, não ataques repe
   members[3].attacks=[{stars:2,defenderTag:targets[2].tag}];
   const result=warProjection(p,{now});assert.equal(result.kind,'estimate');assert.equal(result.triples,3);
   assert.equal(result.basesMissing,3);assert.equal(result.remaining,6);assert.equal(result.neededRate,50);
-  assert.match(result.message,/Ataques repetidos no mesmo alvo/);
+  assert.match(result.message,/Se todos os 6 ataques restantes forem realizados/);
+  assert.match(result.message,/repetidos no mesmo alvo/);
 });
 test('projeção não usa guerra privada, coleta antiga ou ataques incompletos',()=>{
   const p=payload();p.health.code='api_http_403';assert.equal(warProjection(p,{now}).kind,'unavailable');
